@@ -1,0 +1,12 @@
+Changes
+LDAPapi.pm
+LDAPapi.xs
+MANIFEST
+Makefile.PL
+README
+constant.gen
+test.pl
+typemap
+examples/ldapwalk.pl
+examples/testwrite.pl
+examples/www-ldap.pl
