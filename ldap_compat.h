@@ -6,7 +6,7 @@
 /****************************************************************************/
 
 #define ldap_memfree(x) safefree(x)
-#define ldap_ber_free(x,y) safefree(x)
+#define ber_free(x,y) safefree(x)
 
 #define LDAP_OPT_DEREF 2
 #define LDAP_OPT_SIZELIMIT 3

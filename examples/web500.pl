@@ -1,9 +1,9 @@
 #!/usr/bin/perl
 #
-#  directory.pl - Full featured LDAP directory SEARCH, MODIFY, DELETE, ADD
+#  web500.pl - Full featured LDAP directory SEARCH, MODIFY, DELETE, ADD
 #    Web Interface, with Authentication.
 #
-#  Author: Clayton Donley, Motorola <donley@cig.mcel.mot.com>
+#  Author: Clayton Donley, Motorola <donley@cig.mot.com>
 #
 #  Other Credits:
 #   - textarea feature - Douglas Gray Stevens <gray@austin.apc.slb.com>
@@ -23,13 +23,13 @@ $LDAP_BASEDN = "o=Org,c=US";
 $LDAPCGI_NAME = "/cgi-bin/web500.pl";
 
 # This is the displayed title...
-$LDAPCGI_TITLE = "Web500PL Directory Search and Update";
+$LDAPCGI_TITLE = "Directory Search and Update";
 
 # If set to 0, new passwords will be stored PLAIN TEXT
 $LDAPCGI_CRYPT_PASS = 1;
 
 # This is the address that supports your LDAP server
-$LDAPCGI_HELP_MAIL = "help\@abc.def.cn";
+$LDAPCGI_HELP_MAIL = "help\@myorg.com";
 
 # Do you allow users to change their own password?
 $LDAPCGI_ALLOW_CHPASS = 1;
@@ -38,7 +38,7 @@ $LDAPCGI_ALLOW_CHPASS = 1;
 $LDAPCGI_ALLOW_JPEGUL = 1;
 
 # Do you want to display Netscape VCARD Entries?
-$LDAPCGI_DISPLAY_VCARD = 1;
+$LDAPCGI_DISPLAY_VCARD = 0;
 
 # This is the default DN and PASSWORD to bind to the LDAP server when
 # a user hasn't authenticated.
@@ -90,7 +90,7 @@ $LDAPCGI_DISPLAY_VCARD = 1;
   "title","employeenumber");
 
 # When adding users, the following attributes MUST be given
-@adduser_required = ("givenname","sn","uid","mail");
+@adduser_required = ("sn","mail");
 
 # When modifying users, the following attributes can be modified.
 @modifyuser_attributes = ("departmentnumber","telephonenumber","mail",
@@ -100,6 +100,20 @@ $LDAPCGI_DISPLAY_VCARD = 1;
 # When displaying Organizations and Localities below the current point, use
 # this search filter.
 $DOWN_FILTER = "(|(objectclass=organization)(objectclass=organizationalunit)(objectclass=locality))";
+
+# A List of Location or Organization Names that can be used to map people to
+# Certain parts of the Directory Tree.
+# Also used by the 'assign_next_uid' routine to assign UserIDs when doing
+# directory additions.  You can replace that function with your own method
+# of assigning UIDs.
+%location = (
+	"Finance"   => ["ou=Finance,o=Org,c=US","a","/usr/web/logs/nextid.fin"],
+	"HR"        => ["ou=HR, o=Org, c=US","b","/usr/web/logs/nextid.hr"],
+	"IS"   	    => ["ou=IS, o=Org, c=US","c","/usr/web/logs/nextid.is"],
+);
+
+# @default_person_objectclass is the objectclasses assigned to new users
+@default_person_objectclass = ("top","person","organizationalperson","inetorgperson");
 
 # $op will contain our current operation
 $op = param('op');
@@ -163,6 +177,7 @@ if (ldap_simple_bind_s($ld,$ldap_auth{'dn'},$ldap_auth{'pass'})
          != LDAP_SUCCESS)
 {
    &print_bad_auth;
+   ldap_unbind($ld);
    exit;
 }
 
@@ -175,7 +190,7 @@ if (ldap_simple_bind_s($ld,$ldap_auth{'dn'},$ldap_auth{'pass'})
 $ldap_auth_cookie = cookie(  -name => 'ldap_auth_cookie',
                             -value => \%ldap_auth,
                              -path => $LDAPCGI_NAME,
-                          -expires => '+1h');
+                          -expires => '+4h');
 
 #
 # These two functions return NON-HTML mime-types, so we will go there
@@ -249,11 +264,11 @@ sub print_bottom
 {
    print "Comments and Suggestions to:",
       "<ADDRESS><A HREF=mailto:$LDAPCGI_HELP_MAIL>$LDAPCGI_HELP_MAIL</A></ADDRESS>\n",p;
-   print "<h6><strong>$LDAPCGI_TITLE",br,
-     "Written by Clayton Donley &lt;<a href=mailto:donley\@cig.mcel.mot.com>",
-     "donley\@cig.mcel.mot.com</a>&gt;",br,
-     "Copyright &copy 1997 by <a href=http://www.geocities.com/SiliconValley/Bay/2131/>Clayton Donley</a>",br,
-     "All Rights Reserved.</strong></h6>";
+   print "<h6><strong>$LDAPCGI_TITLE\n",br,
+     "Written by Clayton Donley &lt;<a href=mailto:donley\@cig.mot.com>",
+     "donley\@cig.mot.com</a>&gt;\n",br,
+     "Copyright &copy 1998 by <a href=http://miso.wwa.com/~donley/>Clayton Donley</a>\n",br,
+     "All Rights Reserved.</strong></h6>\n";
    return;
 }
 
@@ -264,16 +279,22 @@ sub print_bottom
 
 sub print_options
 {
+   local $Flag;
+   $Flag=0;
    print "<center><a href=$LDAPCGI_NAME?op=search>[SEARCH]</a>";
    if ($ldap_auth{'dn'} eq $ldap_default_auth{'dn'})
    {
       print "<a href=$LDAPCGI_NAME?op=authenticate>[LOGIN]</a>  ";
+      $Flag=1;
    } else {
       print "<a href=$LDAPCGI_NAME?op=searchuser&ldap_myuid=CLEAR&ldap_mypass=CLEAR>[LOGOUT]</a>  ";
       print "<a href=$LDAPCGI_NAME?op=moduser>[CHANGE PASSWORD/INFO]</a>  ";
       print "<a href=$LDAPCGI_NAME?op=adduser>[ADD]</a>  ";
    }
    print "<a href=$LDAPCGI_NAME?op=help>[HELP]</a></center>",p;
+   if ($Flag) {
+	print "NOTE: Please LOGIN before you change password and other information.<br><br>";
+   }
    return;
 }
 
@@ -346,7 +367,7 @@ sub searchuser_entry
       print textfield(-name=>"searchfor_$searchattr",-size=>50),
       $fields{$searchattr}[0],"\n",br;
    }
-   print p,submit('Search'),
+   print p,submit('Search'),reset('Reset'),
    end_form,p,"\n";
 
 # This search will find all the organizations and localities one level below
@@ -370,12 +391,11 @@ sub searchuser_entry
 
 # We need to escape certain special characters.  I'm sure there are more
 # than these, but this was all I could think of for now.
-
       $subbase =~ s/ /%20/g;
       $subbase =~ s/=/%3D/g;
 
 # We simply pass parameters that would change my_base_dn and continue searching
-      print "<li><a href=$LDAPCGI_NAME?op=searchuser&my_base_dn=$subbase>$newbase</a>\n";
+      print "<li><a href='$LDAPCGI_NAME?op=searchuser&my_base_dn=$subbase'>$newbase</a>\n";
    }
    if ($entrycount == 0)
    {
@@ -478,25 +498,25 @@ sub searchuser_results
       }
 
 # Allow full details of the user to be viewed.
-      print "<TD><a href=$LDAPCGI_NAME?op=viewuser&selectdn=$fulldn>View All</a></TD>";
+      print "<TD><a href='$LDAPCGI_NAME?op=viewuser&selectdn=$fulldn'>View All</a></TD>";
 
 # Only display Modify and Delete options if we have authenticated.
       if ($ldap_auth{'dn'} ne $ldap_default_auth{'dn'})
       {
-         print "<TD><a href=$LDAPCGI_NAME?op=moduser&selectdn=$fulldn>Modify</a></TD>";
-         print "<TD><a href=$LDAPCGI_NAME?op=deluser&selectdn=$fulldn>Delete</a></TD>";
+         print "<TD><a href='$LDAPCGI_NAME?op=moduser&selectdn=$fulldn'>Modify</a></TD>";
+         print "<TD><a href='$LDAPCGI_NAME?op=deluser&selectdn=$fulldn'>Delete</a></TD>";
       }
 
 # If we are displaying Netscape VCARDs, display that option.
       if ($LDAPCGI_DISPLAY_VCARD)
       {
-         print "<TD><a href=$LDAPCGI_NAME?op=viewvcard&selectdn=$fulldn>View Vcard</a></TD>";
+         print "<TD><a href='$LDAPCGI_NAME?op=viewvcard&selectdn=$fulldn'>View Vcard</a></TD>";
       }
 
 # If the person has a Jpeg Photo, give an option to display it.
       if ($#jpegphoto >= 0)
       {
-         print "<TD><a href=$LDAPCGI_NAME?op=viewjpeg&selectdn=$fulldn>View Photo</a></TD>";
+         print "<TD><a href='$LDAPCGI_NAME?op=viewjpeg&selectdn=$fulldn'>View Photo</a></TD>";
       }
       print "</TR>\n";
    }
@@ -569,7 +589,7 @@ ldap_next_attribute($ld,$ent,$ber))
 
 #  Draw up the Web Form
 
-   print start_form,
+   print start_multipart_form,
     hidden('op','moduser'),
     hidden('selectdn',$selectdn),
     hidden('gomodifyit','yes');
@@ -739,6 +759,8 @@ sub gomodifyit
       exit;
    }
 
+   &post_modify_routine;
+
    print "<b>Entry Modified...</b>\n";
    return;
 }
@@ -750,9 +772,151 @@ sub gomodifyit
 
 sub adduser_entry
 {
-   print h2("Add function not yet implemented.");
+   if ($ldap_auth{'dn'} eq $ldap_default_auth{'dn'})
+   {
+      print "Please <a href=$LDAPCGI_NAME?op=authenticate>Authenticate</a>.";
+      ldap_unbind($ld);
+      exit;
+   }
+
+   if (param('addit'))
+   {
+      &add_one_user;
+      ldap_unbind($ld);
+      exit;
+   }
+
+   @locations = sort keys %location;
+
+   print start_form,
+      hidden('op','adduser'),
+      hidden('addit','yes'),
+      hr,
+      "<table>",
+      "<TR><TD VALIGN=TOP>Password:</TD><TD>",password_field('pass'),"</TD></TR>\n",
+      "<TR><TD VALIGN=TOP>Password (again):</TD><TD>",password_field('pass2'),"</TD></TR>\n",
+      "</TABLE>",hr,"<TABLE>";
+
+   foreach $key (@adduser_attributes)
+   {
+      print "  <TR><TD VALIGN=TOP>" . $fields{$key}[0] . ":</TD>";
+      if ($fields{$key}[4] > 1)
+      {
+         print "  <TD VALIGN=TOP>",textarea("$key","",$fields{$key}[4],$fields{$key}[1],"","wrap=virtual"),"</TD></TR>\n";
+      } else {
+         print "  <TD VALIGN=TOP>",textfield("$key","",$fields{$key}[1],$fields{$key}[2]),"</TD></TR>\n";
+      }
+   }
+   print "  <TR><TD VALIGN=TOP>Location:</TD><TD VALIGN=TOP>",radio_group('l',[@locations],$locations[0],'true');
+   print "</TABLE>",hr,submit('Add'),reset('Reset'),end_form,hr;
    ldap_unbind($ld);
    exit;
+}
+
+####
+# Routine to Add One User
+####     
+
+sub add_one_user
+{
+   if (length(param('pass')) < 6)
+   {
+      print "Password must be at least 6 characters in length.\n";
+      return;
+   }
+   if (param('pass') ne param('pass2'))
+   {
+      print "Passwords did not match, please try again.\n";
+      return;
+   }
+
+   $pass = param('pass');
+   if ($LDAPCGI_CRYPT_PASS)
+   {
+      $chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+      srand(time()^($$+($$<<15)));
+      $salt = "";
+      for ($i = 0; $i <2; $i++)
+      {
+         $saltno = int rand length($chars);
+         $mychar = substr($chars,$saltno,1);
+         $salt = $salt . $mychar;
+      }
+      $encpass = crypt $pass, $salt;
+      $ldapmod{'userpassword'} = "{CRYPT}" . $encpass;
+   } else {
+      $ldapmod{'userpassword'} = $pass;
+   }
+
+   foreach $key (@adduser_attributes)
+   {
+      if (param($key) ne "")
+      {
+         $ldapmod{$key} = param($key);
+      }
+   }
+
+   foreach $key (@adduser_required)
+   {
+      if ($ldapmod{$key} eq "")
+      {
+         print "Missing Required Field: $key\n",p;
+         ldap_unbind($ld);
+         exit;
+      }
+   }
+
+   $ldapmod{'objectclass'} = [ @default_person_objectclass ];
+
+   $l = param('l');
+   $ldapmod{'l'} = $l;
+
+   if ($ldapmod{'uid'} eq "")
+   {
+      $ldapmod{'uid'} = &assign_next_uid($l);
+   }
+
+   &verify_unique;
+   
+   $cn = $ldapmod{'givenname'} . " " . $ldapmod{'sn'};
+   $uid = $ldapmod{'uid'};
+   $long_cn = $cn . "-" . $uid;
+
+   $ldapmod{'cn'} = [ ($long_cn, $cn) ];
+
+   $add_dn = "cn=" . $long_cn . "," . $location{$l}[0];
+
+   if (ldap_add_s($ld,$add_dn,\%ldapmod) != LDAP_SUCCESS)
+   {
+      &print_error;
+      ldap_unbind($ld);
+      exit;
+   }
+
+   &post_add_routine;
+
+   print "<b>Entry Added...</b>\n",p;
+   print "DN: $add_dn\n",br;
+   print "UID: $uid\n",p;
+
+   return;
+}
+
+sub assign_next_uid
+{
+   my ($loc) = $_;
+
+   open(READNEXTID,$location{$l}[2]);
+   $nextid = <READNEXTID>;
+   close (READNEXTID);
+   chop $nextid;
+   $uid = $location{$l}[1] . $nextid;
+
+   open(WRITENEXTID,">$location{$l}[2]");
+   print WRITENEXTID $nextid+1 . "\n";
+   close(WRITENEXTID);
+
+   return $uid;
 }
 
 ####
@@ -791,6 +955,8 @@ sub deluser_entry
       exit;
    }
 
+   &post_delete_routine;
+
    print "DELETED!\n",p,hr;
    &print_bottom;
    ldap_unbind($ld);
@@ -825,7 +991,7 @@ sub viewuser_entry
             $fulldn = $currentdn;
             $fulldn =~ s/ /%20/g;
             $fulldn =~ s/=/%3D/g;
-            print "<TR><img src=$LDAPCGI_NAME?op=viewjpeg&selectdn=$fulldn></TR>\n";
+            print "<TR><img src='$LDAPCGI_NAME?op=viewjpeg&selectdn=$fulldn'></TR>\n";
          } else {
             @vals = ldap_get_values($ld,$ent,$attr);
             print "<TR>";
@@ -925,7 +1091,7 @@ sub print_html_headers
 {
 
 # Notice that we print the Cookie containing the authentication information.
-   print header(-cookie => $ldap_auth_cookie);
+   print header(-cookie=> $ldap_auth_cookie);
    print start_html($LDAPCGI_TITLE),h1($LDAPCGI_TITLE);
 
 # If the person has authenticated, let them know we know who they are.
@@ -962,7 +1128,31 @@ sub help_screen
 
 sub print_bad_auth
 {
-   print p,"The Login/Password you have supplied is Incorrect.",p,hr;
+   print header;
+   print start_html("Login/Password Incorrect");
+   print h1("Login/Password Incorrect");
+   print "Please <a href=$LDAPCGI_NAME?op=authenticate>Authenticate</a> again.\n",p,hr;
    &print_bottom;
-   exit;
+   return;
+}
+
+######
+# post_*_routine is used for any actions you want to perform after doing
+#   any of these functions.  Useful for email/logging and synchronization
+#   purposes that you may have.
+######
+
+sub post_add_routine
+{
+   return;
+}
+
+sub post_modify_routine
+{
+   return;
+}
+
+sub post_delete_routine
+{
+   return;
 }

@@ -36,6 +36,11 @@ static LDAPMod **hash2mod(HV *ldap_change,int ldap_add_func);
 #ifdef NETSCAPE_LDAP
    static int internal_rebind_proc(LDAP *ld, char **dnp, char **pwp,
 	   int *authmethodp, int freeit, void *arg);
+   static int LDAP_CALL ns_internal_rebind_proc(LDAP *ld, char **dnp,
+            char **pwp, int *authmethodp, int freeit, void *arg)
+   {
+      return internal_rebind_proc(ld,dnp,pwp,authmethodp,freeit,arg);
+   }
 #else
    static int internal_rebind_proc(LDAP *ld, char **dnp, char **pwp,
 	   int *authmethodp, int freeit);
@@ -134,8 +139,10 @@ LDAPMod *parse1mod(SV *ldap_value_ref,char *ldap_current_attribute,
    if (ldap_current_attribute == NULL)
       return(NULL);
    ldap_current_mod->mod_type = ldap_current_attribute;
-   if (SvTYPE(SvRV(ldap_value_ref)) == SVt_PVHV)
+   if (SvROK(ldap_value_ref))
    {
+     if (SvTYPE(SvRV(ldap_value_ref)) == SVt_PVHV)
+     {
       ldap_current_values_hv = (HV *) SvRV(ldap_value_ref);
       hv_iterinit(ldap_current_values_hv);
       if ((ldap_change_element = hv_iternext(ldap_current_values_hv)) == NULL)
@@ -175,7 +182,7 @@ LDAPMod *parse1mod(SV *ldap_value_ref,char *ldap_current_attribute,
 	      av2modvals((AV *)SvRV(ldap_current_value_sv),ldap_isa_ber);
 	 }
       }
-   } else if (SvTYPE(SvRV(ldap_value_ref)) == SVt_PVAV) {
+     } else if (SvTYPE(SvRV(ldap_value_ref)) == SVt_PVAV) {
       ldap_current_mod->mod_op = LDAP_MOD_REPLACE;
       ldap_current_mod->mod_type = ldap_current_attribute;
       ldap_current_mod->mod_values = av2modvals((AV *)SvRV(ldap_value_ref),0);
@@ -183,6 +190,7 @@ LDAPMod *parse1mod(SV *ldap_value_ref,char *ldap_current_attribute,
       {
 	 ldap_current_mod = NULL;
       }
+     }
    } else {
       if (strcmp(SvPV(ldap_value_ref,na),"") == 0)
       {
@@ -276,8 +284,8 @@ internal_rebind_proc(LDAP *ld, char **dnp, char **pwp, int *authmethodp,
    } else {
       if ( *dnp != NULL )
       {
-	 free(*dnp);
-	 free(*pwp);
+	 safefree(*dnp);
+	 safefree(*pwp);
       }
    }
    return(LDAP_SUCCESS);
@@ -727,6 +735,10 @@ int
 ldap_msgfree(lm)
 	LDAPMessage *   lm
 
+void
+ber_free(ber,freebuf)
+	BerElement *ber
+	int freebuf
 
 #ifdef NETSCAPE_LDAP
 
@@ -850,7 +862,6 @@ ldap_get_dn(ld,entry)
 	{
 	   dn = ldap_get_dn(ld, entry);
 	   RETVAL = dn;
-	   ldap_memfree(dn);
 	}
 	OUTPUT:
 	RETVAL
@@ -946,6 +957,10 @@ ldap_next_attribute(ld,entry,ber)
 	LDAP *          ld
 	LDAPMessage *   entry
 	BerElement *    ber
+	CODE:
+	{
+	   RETVAL = ldap_next_attribute(ld,entry,ber);
+	}
 	OUTPUT:
 	RETVAL
 	ber
@@ -1027,9 +1042,9 @@ ldap_set_rebind_proc(ld,rebind_function)
 	   } else {
 	      ldap_perl_rebindproc = rebind_function;
 #ifdef NETSCAPE_LDAP
-	      ldap_set_rebind_proc(ld,(int *)internal_rebind_proc,NULL);
+	      ldap_set_rebind_proc(ld,ns_internal_rebind_proc,NULL);
 #else
-	      ldap_set_rebind_proc(ld,(int *)internal_rebind_proc);
+	      ldap_set_rebind_proc(ld,internal_rebind_proc);
 #endif
 	   }
 	}
@@ -1081,9 +1096,10 @@ ldap_get_all_entries(ld,result)
 	      if (dn != NULL)
 	         ldap_memfree(dn);
 	      if (ber != NULL)
-	         ldap_ber_free(ber,0);
+	         ber_free(ber,0);
 	   }
 	   RETVAL = FullHash;
 	}
 	OUTPUT:
 	RETVAL
+

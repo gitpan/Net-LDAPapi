@@ -90,7 +90,7 @@ WriteMakefile(
 	'INC'           =>      "-I$include_ldap",
 	($version eq "NETSCAPE" ? (
 	'LIBS'          =>      ["-L$lib_ldap -l$ldap_lib"],
-	'DEFINE'        =>      '-DNETSCAPE_LDAP',
+	'DEFINE'        =>      '-DNETSCAPE_LDAP -Dbool=char -DHAS_BOOL',
 	) : $version eq "ISODE" ? (
 	'LIBS'          =>      ["-L$lib_ldap -lldap -llber -lisode"],
 	'DEFINE'        =>      '-DISODE_LDAP',

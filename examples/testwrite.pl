@@ -1,7 +1,7 @@
-#!/usr/bin/perl5 -w
+#!/usr/bin/perl -w
 #
 #  testwrite.pl - Test of LDAP Modify Operations in Perl5
-#  Author:  Clayton Donley <donley@cig.mcel.mot.com>
+#  Author:  Clayton Donley <donley@cig.mot.com>
 #
 #  This utility is mostly to demonstrate all the write operations
 #  that can be done with LDAP through this PERL5 module.
@@ -13,78 +13,52 @@ use Net::LDAPapi;
 
 
 # This is the entry we will be adding.  Do not use a pre-existing entry.
-my $ENTRYDN = "cn=Test User, o=Org, c=US";
+my $ENTRYDN = "cn=New Guy, o=Org, c=US";
 
 # This is the DN and password for an Administrator
 my $ROOTDN = "cn=admin, o=Org, c=US";
-my $ROOTPW = "";
+my $ROOTPW = "123456";
 
-# Set this to your LDAP server.
 my $ldap_server = "localhost";
 
-# This will be the handle for your LDAP session.
-my $ld;
+my $ld = new Net::LDAPapi($ldap_server);
 
-
-#
-# Open connection to the LDAP server.
-#
-if (($ld = ldap_open($ldap_server,LDAP_PORT)) == 0)
+if ($ld == -1)
 {
-   die "Can't Initialize LDAP Connection."
+   die "Connection to LDAP Server Failed";
 }
 
-#
-# Bind as the Administrator User
-#
-if ( ldap_simple_bind_s($ld,$ROOTDN,$ROOTPW) != LDAP_SUCCESS )
+if ($ld->bind_s($ROOTDN,$ROOTPW) != LDAP_SUCCESS)
 {
-   ldap_perror($ld,"ldap_simple_bind_s");
-   ldap_unbind($ld);
-   die;
+   die $ld->errstring . "\n";
 }
 
-#
-# Define one LDAP Modification for Adding a user
-# 
 my %testwrite = (
 	"cn" => "Test User",
 	"sn" => "User",
-	"mail" => "abc123\@somewhere.com",
-	"telephoneNumber" => ["888888","111111"],
-	"objectClass" => ["person","organizationalPerson","inetOrgPerson"],
+        "givenName" => "Test",
+	"telephoneNumber" => "8475551212",
+	"objectClass" => ["top","person","organizationalPerson",
+           "inetOrgPerson"],
+        "mail" => "tuser\@my.org",
 );
 
-#
-# Perform ADD function on $ENTRYDN using the %testwrite Data
-#
-if (ldap_add_s($ld,$ENTRYDN,\%testwrite) != LDAP_SUCCESS)
+if ($ld->add_s($ENTRYDN,\%testwrite) != LDAP_SUCCESS)
 {
-   ldap_perror($ld,"ldap_add_s");
-   die;
+   die $ld->errstring;
 }
 
 print "Entry Added.\n";
 
 
-#
-# Recreate %testwrite to include an entry for modification
-#
 %testwrite = (
-#
-# Notice "a" for ADD
-	"pager" => {"a",["554","665"]},
-	"mail" => ["abc\@423.com","bca\@abb.gov"],
-	"labeleduri" => "http://www.abb.com/",
+	"telephoneNumber" => "7085551212",
+        "mail" => {"a",["Test_User\@my.org"]},
 );
 
-#
-# Perform Modify function on $ENTRYDN using %testwrite data
-#
-if (ldap_modify_s($ld,$ENTRYDN,\%testwrite) != LDAP_SUCCESS)
+if ($ld->modify_s($ENTRYDN,\%testwrite) != LDAP_SUCCESS)
 {
-   ldap_perror($ld,"ldap_modify_s");
-   die;
+   die $ld->errstring;
 }
 
 print "Entry Modified.\n";
@@ -92,15 +66,14 @@ print "Entry Modified.\n";
 #
 # Delete the entry for $ENTRYDN
 #
-if (ldap_delete_s($ld,$ENTRYDN) != LDAP_SUCCESS)
+if ($ld->delete_s($ENTRYDN) != LDAP_SUCCESS)
 {
-   ldap_perror($ld,"ldap_delete_s");
-   die;
+   die $ld->errstring;
 }
 
 print "Entry Deleted.\n";
 
 # Unbind to LDAP server
-ldap_unbind($ld);
+$ld->unbind;
 
 exit;

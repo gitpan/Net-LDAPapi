@@ -1,12 +1,12 @@
 =======================================================================
-                Net::LDAPapi Module v1.39a for Perl5
+                Net::LDAPapi Module v1.40 for Perl5
                   Clayton Donley, <donley@wwa.com>
 =======================================================================
 
 COPYRIGHT
 =========
 
-   Copyright (c) 1997 Clayton Donley. All rights reserved.
+   Copyright (c) 1998 Clayton Donley. All rights reserved.
    This program is free software; you can redistribute it and/or
    modify it under the same terms as Perl itself.
 
@@ -49,6 +49,17 @@ and Perl 5.004+.
 Please let me know if you compile it successfully on a new platform or have
 any problems. For problems, please include the compilation errors. 
 
+
+NEW PERL-OO INTERFACE
+=====================
+
+As of version 1.40, a new Perl-OO layer has been added to allow more
+object oriented access into the API.  All of the original commands are
+unchanged, but are no longer documented.  You are encouraged to use the
+new OO style routines, which are documented in the man-page.
+
+Named arguments are not yet supported, but will definately be added by
+the time I release the next version.
 
 UNIX INSTALLATION
 =================
@@ -120,7 +131,7 @@ installation directory.
 EXAMPLES
 ========
 
-   There exists five examples in the 'examples' directory.  The current
+   There exists six examples in the 'examples' directory.  The current
 examples are:
 
       o ldapwalk.pl - This script demonstrates the use of Asynchronous LDAP
@@ -130,7 +141,7 @@ examples are:
 
       o ldapwalk2.pl - This is the same as ldapwalk.pl, only it shows how to
          replace the portion that retrieves results and packages them in
-         the hash of hashes with the new ldap_get_all_entries function.
+         the hash of hashes with the new get_all_entries function.
 
       o testwrite.pl - This script demonstrates using synchronous Add, Modify,
          and Delete calls to manage an LDAP server.  You need update access
@@ -153,16 +164,24 @@ examples are:
          to a WebPH style interface for the search part on the advice of
          Douglas Gray Stephens.
 
+      o updatepw.pl - Updates a password entry for a user from Unix into
+         the LDAP server.  You'll likely have to tinker with this program
+         to get it to do exactly what you want, but it exists as an idea
+         as to how you can do this.
+
    In addition, the test.pl program in the top level directory shows some
 of the basic synchronous search functionality.
 
 
-LDAP API SUPPORT
-================
+LDAP C API SUPPORT
+==================
 
    The following is a list of LDAP API calls supported by this API.  You can
 find more information on each one in the man page generated when you make
 the module.
+
+   While direct access to these calls is still available, it is suggested
+that you use the Perl-OO style interface if you have never used the C API.
 
    Calls marked with (*) are only available using the Netscape SDK.
 
@@ -219,19 +238,22 @@ FEEDBACK
 
 I'm looking for any feedback regarding this package or how you use this
 package.  If you've got other good examples or such, please send them my
-way and I'll include them.
+way and I'll include them.  I also read comp.lang.perl.*, so any problems
+or bugs, you might want to report there as well, in case others have them.
 
 BUGS
 ====
 
-I'm not sure how well the SSL and REBIND stuff works, so drop me feedback
-on how well/unwell it works.  I am not aware of any still-existing bugs,
-so please send me any experiences.
+The non-OO stuff should work well.  Please let me know if I've introduced
+any bugs in the OO stuff or the cahnged examples.  I've used these routines
+in all my examples and they seem to work.
+
+Please let me know your Operating System, Perl Version, and LDAP API version
+when reporting any bugs.
 
 --
 Clayton Donley
-Motorola (China) Electronics, Ltd.
-Beijing, China
+Rolling Meadows, IL, USA
 email: donley@wwa.com
 web:   http://www.wwa.com/~donley
 CPAN:  /authors/id/CDONLEY

@@ -2,7 +2,7 @@
 #   Net::LDAPapi - TODO List                #
 #                                           #
 #   Last Modified                           #
-#   Date:  Tue Aug 26 16:22:22 CDT 1997     #
+#   Date:  Tue Jan 13 15:15:22 CDT 1997     #
 #############################################
 
 LDAPv2 API Support:
@@ -12,24 +12,9 @@ LDAPv2 API Support:
 LDAPv3 API Support:
 - Need an API and a Server First, but definately intend to do.
 
-Perl Things:
-- While strictly following the LDAP C API works well for people
-  who are already familiar with the C API, PERL lovers will
-  obviously be interested in having some of this available with
-  a more Perl5'ish OO interface.
-
-- Thus, I've begun an additional group of functions within the
-  LDAPapi.pm file that allow the end-programmer to take a slightly
-  more "Perl5" approach to LDAP programming.  This includes using
-  blessed objects rather than the hidden LDAP structures, among
-  other things.
-
-Examples:
-- I've already completed most of a new WEB example.  It completely
-  replaces web500gw and looks similar to WebPH.  V1.40 should include
-  a finished 100% v1.0 of this gateway.  V1.36 contains a version with
-  everything except the HELP and ADD functions.
-  
-- I plan to change all examples to work with -w and use Strict
-  as I find time.
+Module Stuff:
+- Add Named Arguments
+- Clean-up some of the documentation and examples
+- Rewrite web examples to work with 'use strict' and 'perl -w'
+- Rewrite web500.pl to use Perl-OO style Methods
 

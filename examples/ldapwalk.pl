@@ -1,15 +1,15 @@
-#!/usr/misc/bin/perl5
+#!/usr/bin/perl
 #
 #
 #  ldapwalk.pl - Walks through Records Matching a Given Filter
-#  Author:  Clayton Donley, Motorola, <donley@cig.mcel.mot.com>
+#  Author:  Clayton Donley, Motorola, <donley@cig.mot.com>
 #
 #  Demonstration of Synchronous Searching in PERL5.
 #
 #  Rather than printing attribute and values directly, they are
 #  stored in a Hash, where further manipulation would be very simple.
-#  The output could then be printed in LDIF format for import, or
-#  simply run through ldap_modify_s commands.
+#  The output could then be printed to a file or standard output, or
+#  simply run through the modify or add commands.
 #
 #  Usage:  ldapwalk.pl FILTER
 #  Example:  ldapwalk.pl "sn=Donley"
@@ -32,36 +32,37 @@ my $attr;
 my $ent;
 my $ber;
 my @vals;
-my %record = ();
+my %record;
 my $rc;
 my $result;
 
 #
 #  Initialize Connection to LDAP Server
 
-if (($ld = ldap_open($ldap_server,LDAP_PORT)) eq "")
+if (($ld = new Net::LDAPapi($ldap_server)) == -1)
 {
-   die "ldap_init Failed!";
+   die "Connection Failed!";
 }
 
 #
-#  Bind as NULL,NULL to LDAP connection $ld
+#  Bind as NULL User to LDAP connection $ld
 
-if ((ldap_simple_bind_s($ld,"","")) != LDAP_SUCCESS)
+if ($ld->bind_s != LDAP_SUCCESS)
 {
-   ldap_perror($ld,"ldap_simple_bind_s");
+   print "bind: " . $ld->errstring . "\n";
+   $ld->unbind;
    die;
 }
 
 #  This will set the size limit to $sizelimit from above.  The command
 #  is a Netscape addition, but I've programmed replacement versions for
 #  other APIs.
-ldap_set_option($ld,LDAP_OPT_SIZELIMIT,$sizelimit);
+$ld->set_option(LDAP_OPT_SIZELIMIT,$sizelimit);
 
 #  This routine is COMPLETELY unnecessary in this application, since
 #  the rebind procedure at the end of this program simply rebinds as
 #  a NULL user.
-# ldap_set_rebind_proc($ld,&rebindproc);
+$ld->set_rebind_proc(&rebindproc);
 
 #
 #  Specify Search Filter and List of Attributes to Return
@@ -71,18 +72,12 @@ my @attrs = ();
 
 #
 #  Perform Search
-my $msgid = ldap_search($ld,$BASEDN,LDAP_SCOPE_SUBTREE,$filter,\@attrs,0);
+my $msgid = $ld->search($BASEDN,LDAP_SCOPE_SUBTREE,$filter,\@attrs,0);
 
 if ($msgid < 0)
 {
-#  ldap_get_lderrno is another Netscape routine that I've made available
-#   for other APIs, since we can't directly access the internals of the LDAP
-#   structure to get error codes.
-   my $blah1;
-   my $blah2;
-   my $err = ldap_get_lderrno($ld,$blah1,$blah2);
-   print &ldap_err2string($err),"\n";
-   ldap_unbind($ld);
+   print "search: " . $ld->errstring . "\n";
+   $ld->unbind;
    die;
 }
 
@@ -94,53 +89,52 @@ my $timeout = -1;
 
 #
 #  Cycle Through Entries
-while (($rc = ldap_result($ld,$msgid,0,$timeout,$result)) == LDAP_RES_SEARCH_ENTRY)
+while (($rc = $ld->result($msgid,0,$timeout)) == LDAP_RES_SEARCH_ENTRY)
 {
   $nentries++;
 
-  for ($ent = ldap_first_entry($ld,$result); $ent != 0; $ent = ldap_next_entry($ld,$ent))
+  for ($ent = $ld->first_entry; $ent != 0; $ent = $ld->next_entry)
   {
 
 #
 #  Get Full DN
 
-   if (($dn = ldap_get_dn($ld,$ent)) eq "")
+   if (($dn = $ld->get_dn) eq "")
    {
-      ldap_perror($ld, "ldap_get_dn");
+      print "get_dn: " . $ld->errstring . "\n";
+      $ld->unbind;
+      die;
    }
 
 #
 #  Cycle Through Each Attribute
 
-   for ($attr = ldap_first_attribute($ld,$ent,$ber); $attr ne ""; $attr = ldap_next_attribute($ld,$ent,$ber))
+   for ($attr = $ld->first_attribute; $attr ne ""; $attr = $ld->next_attribute)
    {
 
 #
-#  Notice that we're using ldap_get_values_len.  This will retrieve binary
-#  as well as text data.  You can change to ldap_get_values to only get text
+#  Notice that we're using get_values_len.  This will retrieve binary
+#  as well as text data.  You can change to get_values to only get text
 #  data.
 #
-      @vals = ldap_get_values_len($ld,$ent,$attr);
+      @vals = $ld->get_values_len($attr);
       $record{$dn}->{$attr} = [@vals];
    }
   }
-  ldap_msgfree($result);
+  $ld->msgfree;
 
 }
-if ($rc == LDAP_RES_SEARCH_RESULT)
+if ($rc == LDAP_RES_SEARCH_RESULT &&
+     $ld->err != LDAP_SUCCESS)
 {
-   my $err = ldap_result2error($ld,$result,0);
-   if ($err != LDAP_SUCCESS)
-   {
-      my $texterr = ldap_err2string($err);
-      print "Error: $texterr\n";
-      die;
-   }
+   print "result: " . $ld->errstring . "\n";
+   $ld->unbind;
+   die;
 }
 
 print "Found $nentries records\n";
 
-ldap_unbind($ld);
+$ld->unbind;
 
 foreach $dn (keys %record)
 {
@@ -158,7 +152,7 @@ foreach $dn (keys %record)
 #  Notice how easy it is to take a binary attribute and dump it to a file
 #  or such.  Gotta love PERL.
 #
-	    print "$attr: " . length($item). "\n";
+	    print "$attr: JpegPhoto (length: " . length($item). ")\n";
 	    open (TEST,">$dn.jpg");
 	    print TEST $item;
 	    close (TEST);

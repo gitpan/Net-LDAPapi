@@ -1,17 +1,15 @@
-#!/usr/misc/bin/perl5 -w
+#!/usr/bin/perl -w
 #
+#  testwalk.pl - Walks through Records Matching a Given Filter
+#  Author:  Clayton Donley, Motorola, <donley@cig.mot.com>
 #
-#  ldapwalk2.pl - Walks through Records Matching a Given Filter
-#  Author:  Clayton Donley, Motorola, <donley@cig.mcel.mot.com>
+#  Demonstration of OO Style LDAP Calls Using Net::LDAPapi
 #
-#  Demonstration of Synchronous Searching in PERL5.
+#  Similar to ldapwalk2.pl, only it uses the OO versions of the synchronous
+#  functions to retrieve a hash containing the matching entries.
 #
-#  Similar to ldapwalk.pl, only it uses synchronous calls and demostrates
-#  the use of 'ldap_get_all_entries' to retrieve a hash containing all
-#  matching entries.
-#
-#  Usage:  ldapwalk2.pl FILTER
-#  Example:  ldapwalk2.pl "sn=Donley"
+#  Usage:  testwalk.pl FILTER
+#  Example:  testwalk.pl "sn=Donley"
 #
 
 use strict;
@@ -25,6 +23,7 @@ my $sizelimit = 100;            # Set to Maximum Number of Entries to Return
                                 # Can set small to test error routines
 
 #  Various Variable Declarations
+my $ldcon;
 my $ld;
 my $filter;
 my $result;
@@ -35,30 +34,19 @@ my $attr;
 
 #  Initialize Connection to LDAP Server
 
-if (($ld = ldap_open($ldap_server,LDAP_PORT)) eq "")
+if (($ldcon = new Net::LDAPapi($ldap_server)) == -1)
 {
-   die "ldap_init Failed!";
+   die "Unable to Open LDAP Connection";
 }
 
-#  Bind as NULL,NULL to LDAP connection $ld
-
-if ((ldap_simple_bind_s($ld,"","")) != LDAP_SUCCESS)
+if ($ldcon->bind_s != LDAP_SUCCESS)
 {
-   ldap_perror($ld,"ldap_simple_bind_s");
-   die;
+   die $ldcon->errstring;
 }
 
-#  This will set the size limit to $sizelimit from above.  The command
-#  is a Netscape addition, but I've programmed replacement versions for
-#  other APIs.
+$ldcon->set_option(LDAP_OPT_SIZELIMIT,$sizelimit);
 
-ldap_set_option($ld,LDAP_OPT_SIZELIMIT,$sizelimit);
-
-#  This routine is COMPLETELY unnecessary in this application, since
-#  the rebind procedure at the end of this program simply rebinds as
-#  a NULL user.
-
-#ldap_set_rebind_proc($ld,\&rebindproc);
+$ldcon->set_rebind_proc(\&rebindproc);
 
 #  Specify what to Search For
 
@@ -66,19 +54,9 @@ $filter = $ARGV[0];
 
 #  Perform Search
 
-if (ldap_search_s($ld,$BASEDN,LDAP_SCOPE_SUBTREE,$filter,[],0,$result)
-       != LDAP_SUCCESS)
+if ($ldcon->search_s($BASEDN,LDAP_SCOPE_SUBTREE,$filter,[],0) != LDAP_SUCCESS)
 {
-
-#  ldap_get_lderrno is another Netscape routine that I've made available
-#   for other APIs, since we can't directly access the internals of the LDAP
-#   structure to get error codes.
-
-   my $errdn;
-   my $extramsg;
-   my $err = ldap_get_lderrno($ld,$errdn,$extramsg);
-   print &ldap_err2string($err),"\n";
-   ldap_unbind($ld);
+   print $ldcon->errstring . "\n";
    die;
 }
 
@@ -87,9 +65,9 @@ if (ldap_search_s($ld,$BASEDN,LDAP_SCOPE_SUBTREE,$filter,[],0,$result)
 #  Since a reference is returned, we simply make %record contain the HASH
 #  that the reference points to.
 
-%record = %{ldap_get_all_entries($ld,$result)};
+%record = %{$ldcon->get_all_entries};
 
-ldap_unbind($ld);
+$ldcon->unbind;
 
 # We can sort our resulting DNs quite easily...
 my @dns = (sort keys %record);

@@ -1,4 +1,4 @@
-#!/usr/misc/bin/perl5
+#!/usr/bin/perl
 #
 #  www-ldap.pl - CGI script to allow users with passwords to authenticate
 #      and modify their own accounts on an LDAP server.
@@ -6,7 +6,7 @@
 #  Requires: PERL5 LDAP Module
 #            CGI.pm Module 
 #
-#  Author:  Clayton Donley <donley@cig.mcel.mot.com>
+#  Author:  Clayton Donley <donley@cig.mot.com>
 #
 
 
@@ -68,14 +68,14 @@ if (!param())
 	   &incorrect_login;
 	}
 	&modify_screen;
-	ldap_unbind($ld);
+	$ld->unbind;
 	&byline;
 	exit;
 }
 
 sub byline
 {
-	print hr,"LDAP Account Management Tool by <em><a href=mailto:donley\@cig.mcel.mot.com>Clayton Donley</a></em>\n",p;
+	print hr,"LDAP Account Management Tool by <em><a href=mailto:donley\@cig.mot.com>Clayton Donley</a></em>\n",p;
 	return;
 }
 
@@ -107,13 +107,13 @@ sub bind
 
 #  First initialize our connection to the LDAP Server and bind anonymously.
 
-	$ld = ldap_open($ldap_server,LDAP_PORT);
+	$ld = new Net::LDAPapi($ldap_server);
 
-	if (ldap_simple_bind_s($ld,"","") != LDAP_SUCCESS)
+	if ($ld->bind_s != LDAP_SUCCESS)
 	{
 	   print "Error:  Unable to Bind Anonymously to the Directory.",p;
-	   ldap_perror($ld,"ldap_search_s");
-	   ldap_unbind($ld);
+	   print "bind_s: $ld->errstring\n";
+	   $ld->unbind;
 	   return;
 	}
 
@@ -122,11 +122,12 @@ sub bind
  
         @attrs = ("cn");
         $filter = "(uid=$ldap_bind_uid)";
-        if (ldap_search_s($ld,$BASEDN,LDAP_SCOPE_SUBTREE,$filter,\@attrs,1,$result) != LDAP_SUCCESS)
+        if ($ld->search_s($BASEDN,LDAP_SCOPE_SUBTREE,$filter,\@attrs,1)
+           != LDAP_SUCCESS)
         {
            print "Error:  Unable to Search Directory.",p;
-	   ldap_perror($ld,"ldap_search_s");
-	   ldap_unbind($ld);
+	   print "search_s: $ld->errstring\n";
+	   $ld->unbind;
 	   exit -1;
         }
 
@@ -134,25 +135,25 @@ sub bind
 #  assumption that since UID means Unique ID that this is the only time we
 #  need to do this.
  
-        $ent = ldap_first_entry($ld,$result);
+        $ld->first_entry;
 
         if ($ent != 0)
         {
 
 #  We only need the DN from the entry we matched.
 
-	   $dn = ldap_get_dn($ld,$ent);
+	   $dn = $ld->get_dn;
 
 #  Attempt to bind with the DN and Password supplied previously.
 
-	  if (ldap_simple_bind_s($ld,$dn,$ldap_bind_password) != LDAP_SUCCESS)
+	  if ($ld->bind_s($dn,$ldap_bind_password) != LDAP_SUCCESS)
           {
-	      ldap_unbind($ld);
+	      $ld->unbind;
 	      return -1;  # Return Failure
 	  }
           return 0;  # Return Success
 	}
-	ldap_unbind($ld);
+	$ld->unbind;
 	return -1;  # Return Failure
 }
 
@@ -181,9 +182,10 @@ sub modify_screen
 
 #  Perform Synchronous LDAP Search
 
-	if (ldap_search_s($ld,$dn,LDAP_SCOPE_BASE,$filter,\@attrs,0,$result) != LDAP_SUCCESS)
+	if ($ld->search_s($dn,LDAP_SCOPE_BASE,$filter,\@attrs,0)
+          != LDAP_SUCCESS)
 	{
-	   ldap_perror($ld,"ldap_search_s");
+	   print "search_s: $ld->errstring\n",p;
 	   print "Error:  Unable to Search.\n";
 	   exit;
 	}
@@ -191,7 +193,7 @@ sub modify_screen
 #  Since we queried within a specific DN, we will get only 1 match...Put
 #  a pointer to that match in $ent
 
-	$ent = ldap_first_entry($ld,$result);
+	$ld->first_entry;
 
 #  This should never happen in normal use...
 
@@ -203,9 +205,9 @@ sub modify_screen
 
 #  Cycle through all attributes and place their values in a hash.
 
-	for ($attr = ldap_first_attribute($ld,$ent,$ber); $attr; $attr = ldap_next_attribute($ld,$ent,$ber))
+	for ($attr = $ld->first_attribute; $attr; $attr = $ld->next_attribute)
 	{
-	   @vals = ldap_get_values($ld,$ent,$attr);
+	   @vals = $ld->get_values($attr);
            $record{$attr} = [ @vals ];
         }
 
@@ -345,10 +347,10 @@ sub gomodifyit
 	@change_keys = keys %ldapmod;
 	if ($#change_keys >= 0)
 	{
-	   if (ldap_modify_s($ld,$dn,\%ldapmod) != LDAP_SUCCESS)
+	   if ($ld->modify_s($dn,\%ldapmod) != LDAP_SUCCESS)
 	   {
 	      print "\n",p,"Error: Unable to Modify Entry...\n",p;
-	      ldap_perror($ld,"ldap_modify_s");
+	      print "modify_s: $ld->errstring\n";
 	      exit;
 	   }
 #  Success!

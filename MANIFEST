@@ -4,6 +4,7 @@ LDAPapi.pm
 LDAPapi.xs
 MANIFEST
 Makefile.PL
+Manpage.old
 README
 Todo
 constant.gen
