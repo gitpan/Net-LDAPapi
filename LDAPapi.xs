@@ -13,7 +13,7 @@ extern "C" {
 
 /* Netscape prototypes declare things as "const char *" while   */
 /*      UM-LDAP uses "char *"                                   */
-	
+
 #ifdef NETSCAPE_LDAP
  #define LDAP_CHAR const char
  #include <ldap_ssl.h>
@@ -31,7 +31,7 @@ extern "C" {
 static char **av2modvals(AV *ldap_value_array_av, int ldap_isa_ber);
 static LDAPMod *parse1mod(SV *ldap_value_ref,char *ldap_current_attribute,
 	int ldap_add_func);
-static LDAPMod **hash2mod(HV *ldap_change,int ldap_add_func);
+static LDAPMod **hash2mod(SV *ldap_change,int ldap_add_func, const char *func);
 
 #ifdef NETSCAPE_LDAP
    static int internal_rebind_proc(LDAP *ld, char **dnp, char **pwp,
@@ -54,7 +54,7 @@ SV *ldap_perl_rebindproc = NULL;
 /* ISODE8 doesn't include the ldap_mods_free function */
 
 #ifdef ISODE8_LDAP
-   #define ldap_mods_free(x,y) safefree(x);
+   #define ldap_mods_free(x,y) Safefree(x);
 #endif
 
 
@@ -75,7 +75,7 @@ char **av2modvals(AV *ldap_value_array_av, int ldap_isa_ber)
    struct berval **ldap_bv_modvalues = NULL;
    struct berval *ldap_current_bval = NULL;
    SV **ldap_current_value_sv;
-   int ldap_value_count = 0,ldap_pvlen;
+   int ldap_value_count = 0,ldap_pvlen,ldap_real_valuecount = 0;
 
    ldap_arraylen = av_len(ldap_value_array_av);
    if (ldap_arraylen < 0)
@@ -83,38 +83,37 @@ char **av2modvals(AV *ldap_value_array_av, int ldap_isa_ber)
 
    if (ldap_isa_ber == 1)
    {
-      ldap_bv_modvalues =
-	(struct berval **)safemalloc((2+ldap_arraylen)*sizeof(struct berval *));
+      New(1,ldap_bv_modvalues,2+ldap_arraylen,struct berval *);
    } else {
-      ldap_ch_modvalues = (char **)safemalloc((2+ldap_arraylen)*sizeof(char *));
+      New(1,ldap_ch_modvalues,2+ldap_arraylen,char *);
    }
+
    for (ldap_value_count = 0; ldap_value_count <=ldap_arraylen;
 	ldap_value_count++)
    {
       ldap_current_value_sv = av_fetch(ldap_value_array_av,ldap_value_count,0);
       ldap_current_value_char = SvPV(*ldap_current_value_sv,na);
       ldap_pvlen = SvCUR(*ldap_current_value_sv);
-      if (ldap_isa_ber == 1)
+      if (strcmp(ldap_current_value_char,"") != 0)
       {
-	 ldap_current_bval =
-	   (struct berval *)safemalloc(sizeof(struct berval));
-	 ldap_current_bval->bv_len = ldap_pvlen;
-	 ldap_current_bval->bv_val = ldap_current_value_char;
-	 ldap_bv_modvalues[ldap_value_count] = ldap_current_bval;
-      } else {
-         ldap_ch_modvalues[ldap_value_count] = ldap_current_value_char;
+         if (ldap_isa_ber == 1)
+         {
+            New(1,ldap_current_bval,1,struct berval);
+	    ldap_current_bval->bv_len = ldap_pvlen;
+	    ldap_current_bval->bv_val = ldap_current_value_char;
+	    ldap_bv_modvalues[ldap_real_valuecount] = ldap_current_bval;
+         } else {
+            ldap_ch_modvalues[ldap_real_valuecount] = ldap_current_value_char;
+         }
+         ldap_real_valuecount++;
       }
-      /* if (ldap_current_value_char != NULL)
-         safefree(ldap_current_value_char);
-      if (ldap_current_value_sv != NULL)
-         safefree(ldap_current_value_sv); */
    }
    if (ldap_isa_ber == 1)
    {
-      ldap_bv_modvalues[ldap_value_count] = NULL;
+      ldap_bv_modvalues[ldap_real_valuecount] = NULL;
       return ((char **)ldap_bv_modvalues);
    } else {
-      ldap_ch_modvalues[ldap_value_count] = NULL;
+      ldap_ch_modvalues[ldap_real_valuecount] = NULL;
       return (ldap_ch_modvalues);
    }
 }
@@ -128,16 +127,17 @@ static
 LDAPMod *parse1mod(SV *ldap_value_ref,char *ldap_current_attribute,
    int ldap_add_func)
 {
-   LDAPMod *ldap_current_mod = safemalloc(sizeof(LDAPMod));
+   LDAPMod *ldap_current_mod;
    HV *ldap_current_values_hv;
    HE *ldap_change_element;
    char *ldap_current_modop;
    SV *ldap_current_value_sv;
    I32 keylen;
    int ldap_isa_ber = 0;
- 
+
    if (ldap_current_attribute == NULL)
       return(NULL);
+   New(1,ldap_current_mod,1,LDAPMod);
    ldap_current_mod->mod_type = ldap_current_attribute;
    if (SvROK(ldap_value_ref))
    {
@@ -183,24 +183,34 @@ LDAPMod *parse1mod(SV *ldap_value_ref,char *ldap_current_attribute,
 	 }
       }
      } else if (SvTYPE(SvRV(ldap_value_ref)) == SVt_PVAV) {
-      ldap_current_mod->mod_op = LDAP_MOD_REPLACE;
-      ldap_current_mod->mod_type = ldap_current_attribute;
+      if (ldap_add_func == 1)
+         ldap_current_mod->mod_op = 0;
+      else
+         ldap_current_mod->mod_op = LDAP_MOD_REPLACE;
       ldap_current_mod->mod_values = av2modvals((AV *)SvRV(ldap_value_ref),0);
       if (ldap_current_mod->mod_values == NULL)
       {
-	 ldap_current_mod = NULL;
+	 ldap_current_mod->mod_op = LDAP_MOD_DELETE;
       }
      }
    } else {
       if (strcmp(SvPV(ldap_value_ref,na),"") == 0)
       {
-	 ldap_current_mod->mod_op = LDAP_MOD_DELETE;
-	 ldap_current_mod->mod_type = ldap_current_attribute;
-	 ldap_current_mod->mod_values = NULL;
+         if (ldap_add_func != 1)
+         {
+	    ldap_current_mod->mod_op = LDAP_MOD_DELETE;
+	    ldap_current_mod->mod_values = NULL;
+         } else {
+            return(NULL);
+         }
       } else {
-	 ldap_current_mod->mod_op = LDAP_MOD_REPLACE;
-	 ldap_current_mod->mod_type = ldap_current_attribute;
-	 ldap_current_mod->mod_values = (char **)safemalloc(2*sizeof(char *));
+         if (ldap_add_func == 1)
+         {
+            ldap_current_mod->mod_op = 0;
+         } else {
+	    ldap_current_mod->mod_op = LDAP_MOD_REPLACE;
+         }
+         New(1,ldap_current_mod->mod_values,2,char *);
 	 ldap_current_mod->mod_values[0] = SvPV(ldap_value_ref,na);
 	 ldap_current_mod->mod_values[1] = NULL;
       }
@@ -214,7 +224,7 @@ LDAPMod *parse1mod(SV *ldap_value_ref,char *ldap_current_attribute,
 /*    LDAPMod pointers.                                                */
 
 static
-LDAPMod ** hash2mod(HV *ldap_change,int ldap_add_func)
+LDAPMod ** hash2mod(SV *ldap_change_ref,int ldap_add_func,const char *func)
 {
    LDAPMod **ldapmod = NULL;
    LDAPMod *ldap_current_mod;
@@ -223,6 +233,12 @@ LDAPMod ** hash2mod(HV *ldap_change,int ldap_add_func)
    char *ldap_current_attribute;
    SV *ldap_current_value_sv;
    I32 keylen;
+   HV *ldap_change;
+
+   if (!SvROK(ldap_change_ref) || SvTYPE(SvRV(ldap_change_ref)) != SVt_PVHV)
+      croak("Net::LDAPapi::%s needs Hash reference as argument 3.",func);
+
+   ldap_change = (HV *)SvRV(ldap_change_ref);
 
    hv_iterinit(ldap_change);
    while((ldap_change_element = hv_iternext(ldap_change)) != NULL)
@@ -231,18 +247,19 @@ LDAPMod ** hash2mod(HV *ldap_change,int ldap_add_func)
       ldap_current_value_sv = hv_iterval(ldap_change,ldap_change_element);
       ldap_current_mod = parse1mod(ldap_current_value_sv,
 	ldap_current_attribute,ldap_add_func);
-      ldap_attribute_count = ldap_attribute_count + 1;
-      ldapmod = (LDAPMod **)
-      (ldapmod
-	? saferealloc(ldapmod,(1+ldap_attribute_count)*sizeof(LDAPMod *))
-	: safemalloc (        (1+ldap_attribute_count)*sizeof(LDAPMod *)));
-      ldapmod[ldap_attribute_count - 1] =
-	(LDAPMod *)safemalloc(sizeof(LDAPMod));
-      Copy(ldap_current_mod,ldapmod[ldap_attribute_count-1],
-	sizeof(LDAPMod *),LDAPMod *);
       if (ldap_current_mod != NULL)
-	 safefree(ldap_current_mod);
+      {
+         ldap_attribute_count++;
+         (ldapmod
+	   ? Renew(ldapmod,1+ldap_attribute_count,LDAPMod *)
+	   : New(1,ldapmod,1+ldap_attribute_count,LDAPMod *));
+         New(1,ldapmod[ldap_attribute_count -1],sizeof(LDAPMod),LDAPMod);
+         Copy(ldap_current_mod,ldapmod[ldap_attribute_count-1],
+	   sizeof(LDAPMod),LDAPMod *);
+      }
    }
+/*   if (!ldapmod)
+      ldapmod = New(1,ldapmod,1,LDAPMod *); */
    ldapmod[ldap_attribute_count] = NULL;
    return ldapmod;
 }
@@ -259,33 +276,35 @@ internal_rebind_proc(LDAP *ld, char **dnp, char **pwp, int *authmethodp,
   int freeit)
 #endif
 {
-   int count = 0;
+
    if (freeit == 0)
    {
-
+      int count = 0;
       dSP;
 
       ENTER ;
       SAVETMPS ;
-
-      count = perl_call_sv(ldap_perl_rebindproc,G_NOARGS);
+      count = perl_call_sv(ldap_perl_rebindproc,G_ARRAY|G_NOARGS);
 
       SPAGAIN;
 
       if (count != 3)
-	 croak("ldap_perl_rebindproc: Expected DN, PASSWORD, and AUTHTYPE returned.\n");
+ 	 croak("ldap_perl_rebindproc: Expected DN, PASSWORD, and AUTHTYPE returned.\n");
 
-      *dnp = strdup(SvPV(POPs,na));
-      *pwp = strdup(SvPV(POPs,na));
       *authmethodp = POPi;
+      *pwp = strdup(POPp);
+      *dnp = strdup(POPp);
 
       FREETMPS ;
       LEAVE ;
    } else {
-      if ( *dnp != NULL )
+      if (dnp && *dnp)
       {
-	 safefree(*dnp);
-	 safefree(*pwp);
+         free(*dnp);
+      }
+      if (pwp && *pwp)
+      {
+         free(*pwp);
       }
    }
    return(LDAP_SUCCESS);
@@ -367,9 +386,9 @@ ldap_set_option(ld,option,optdata)
 	      case LDAP_OPT_SIZELIMIT: ld->ld_sizelimit = optdata; break;
 	      case LDAP_OPT_TIMELIMIT: ld->ld_timelimit = optdata; break;
 	      case LDAP_OPT_REFERRALS: if (optdata == LDAP_OPT_ON)
-		    ld->ld_options &= LDAP_OPT_REFERRALS; else 
+		    ld->ld_options |= LDAP_OPT_REFERRALS; else 
 		      ld->ld_options &= ~LDAP_OPT_REFERRALS; break;
-	      break;
+	      default: RETVAL = -1; break;
 	   }
 	}
 	OUTPUT:
@@ -391,7 +410,7 @@ ldap_get_option(ld,option,optdata)
 	      case LDAP_OPT_REFERRALS: if (ld->ld_options & LDAP_OPT_REFERRALS)
 		    optdata = LDAP_OPT_ON; else optdata = LDAP_OPT_OFF;
 		    break;
-	      break;
+	      default: RETVAL = optdata = -1; break;
 	   }
 	}
 	OUTPUT:
@@ -426,43 +445,17 @@ int
 ldap_add(ld,dn,ldap_change_ref)
 	LDAP *          ld
 	LDAP_CHAR *     dn
-	SV *            ldap_change_ref
-	CODE:
-	{
-	   LDAPMod **mods;
-
-	   if (SvTYPE(SvRV(ldap_change_ref)) != SVt_PVHV)
-	   {
-	      croak("Net::LDAPapi::ldap_add needs HASH reference as argument 3.");
-	      XSRETURN(1);
-	   }
-	   mods = hash2mod((HV *)SvRV(ldap_change_ref),1);
-	   RETVAL = ldap_add(ld,dn,mods);
-	   /* ldap_mods_free(mods,0); */
-	}
-	OUTPUT:
-	RETVAL
+	LDAPMod **	ldap_change_ref = hash2mod($arg, 1, "$func_name");
+##	CLEANUP:
+##	   ldap_mods_free(ldap_change_ref,0);
 
 int
 ldap_add_s(ld,dn,ldap_change_ref)
 	LDAP *          ld
 	LDAP_CHAR *     dn
-	SV *            ldap_change_ref
-	CODE:
-	{
-	   LDAPMod **mods;
-
-	   if (SvTYPE(SvRV(ldap_change_ref)) != SVt_PVHV)
-	   {
-	      croak("Net::LDAPapi::ldap_add_s needs HASH reference as argument 3.");
-	      XSRETURN(1);
-	   }
-	   mods = hash2mod((HV *)SvRV(ldap_change_ref),1);
-	   RETVAL = ldap_add_s(ld,dn,mods);
-	   /* ldap_mods_free(mods,0); */
-	}
-	OUTPUT:
-	RETVAL
+	LDAPMod **	ldap_change_ref = hash2mod($arg, 1, "$func_name");
+##	CLEANUP:
+##	   ldap_mods_free(ldap_change_ref,0);
 
 int
 ldap_bind(ld,who,passwd,type)
@@ -494,43 +487,15 @@ int
 ldap_modify(ld,dn,ldap_change_ref)
 	LDAP *          ld
 	LDAP_CHAR *     dn
-	SV *            ldap_change_ref
-	CODE:
-	{
-	   LDAPMod **mods;
-
-	   if (SvTYPE(SvRV(ldap_change_ref)) != SVt_PVHV)
-	   {
-	      croak("Net::LDAPapi::ldap_modify needs HASH reference as argument 3.");
-	      XSRETURN(1);
-	   }
-	   mods = hash2mod((HV *)SvRV(ldap_change_ref),0);
-	   RETVAL = ldap_modify(ld,dn,mods);
-	   /* ldap_mods_free(mods,0); */
-	}
-	OUTPUT:
-	RETVAL
+	LDAPMod **	ldap_change_ref = hash2mod($arg, 0, "$func_name");
+##	CLEANUP:
+##	   ldap_mods_free(ldap_change_ref,0);
 
 int
 ldap_modify_s(ld,dn,ldap_change_ref)
 	LDAP *          ld
 	LDAP_CHAR *     dn
-	SV *            ldap_change_ref
-	CODE:
-	{
-	   LDAPMod **mods;
-
-	   if (SvTYPE(SvRV(ldap_change_ref)) != SVt_PVHV)
-	   {
-	      croak("Net::LDAPapi::ldap_modify_s needs HASH reference as argument 3.");
-	      XSRETURN(1);
-	   }
-	   mods = hash2mod((HV *)SvRV(ldap_change_ref),0);
-	   RETVAL = ldap_modify_s(ld,dn,mods);
-	   /* ldap_mods_free(mods,0); */
-	}
-	OUTPUT:
-	RETVAL
+	LDAPMod **	ldap_change_ref = hash2mod($arg, 0, "$func_name");
 
 int
 ldap_modrdn(ld,dn,newrdn)
@@ -603,10 +568,10 @@ ldap_search(ld,base,scope,filter,attrs,attrsonly)
 	   }
 	   if ((arraylen = av_len((AV *)SvRV(attrs))) < 0)
 	   {
-	      attrs_char = (char **)safemalloc(2 * sizeof(char *));
+	      New(1,attrs_char,2,char *);
 	      attrs_char[0] = NULL;
 	   } else {
-	      attrs_char = (char **)safemalloc((arraylen+2)*sizeof(char *));
+	      New(1,attrs_char,arraylen+2,char *);
 	      for (count=0;count <= arraylen; count++)
 	      {
 		 current = av_fetch((AV *)SvRV(attrs),count,0);
@@ -615,7 +580,7 @@ ldap_search(ld,base,scope,filter,attrs,attrsonly)
 	      attrs_char[arraylen+1] = NULL;
 	   }
 	   RETVAL = ldap_search(ld,base,scope,filter,attrs_char,attrsonly);
-	   safefree(attrs_char);
+	   Safefree(attrs_char);
 	}
 	OUTPUT:
 	RETVAL
@@ -639,10 +604,10 @@ ldap_search_s(ld,base,scope,filter,attrs,attrsonly,res)
 	   {
 	      if ((arraylen = av_len((AV *)SvRV(attrs))) < 0)
 	      {
-		 attrs_char = (char **)safemalloc(2*sizeof(char *));
+	         New(1,attrs_char,2,char *);
 		 attrs_char[0] = NULL;
 	      } else {
-		 attrs_char = (char **)safemalloc((arraylen+2)*sizeof(char *));
+	         New(1,attrs_char,arraylen+2,char *);
 		 for (count=0;count <= arraylen; count++)
 		 {
 		    current = av_fetch((AV *)SvRV(attrs),count,0);
@@ -655,7 +620,7 @@ ldap_search_s(ld,base,scope,filter,attrs,attrsonly,res)
 	      XSRETURN(1);
 	   }
 	   RETVAL = ldap_search_s(ld,base,scope,filter,attrs_char,attrsonly,&res);
-	   safefree(attrs_char);
+	   Safefree(attrs_char);
 	}
 	OUTPUT:
 	RETVAL
@@ -685,10 +650,10 @@ ldap_search_st(ld,base,scope,filter,attrs,attrsonly,timeout,res)
 	   }
 	   if ((arraylen = av_len((AV *)SvRV(attrs))) < 0)
 	   {
-	      attrs_char = (char **)safemalloc(2*sizeof(char *));
+	      New(1,attrs_char,2,char *);
 	      attrs_char[0] = NULL;
 	   } else {
-	      attrs_char = (char **)safemalloc((arraylen+2)*sizeof(char *));
+	      New(1,attrs_char,arraylen+2,char *);
 	      for (count=0;count <= arraylen; count++)
 	      {
 		 current = av_fetch((AV *)SvRV(attrs),count,0);
@@ -704,6 +669,7 @@ ldap_search_st(ld,base,scope,filter,attrs,attrsonly,timeout,res)
 	   }
 	   RETVAL = ldap_search_st(ld,base,scope,filter,attrs_char,attrsonly,
 		tv_timeout,&res);
+	   Safefree(attrs_char);
 	}
 	OUTPUT:
 	RETVAL
@@ -1032,7 +998,7 @@ ldap_set_rebind_proc(ld,rebind_function)
 	SV *            rebind_function
 	CODE:
 	{
-	   if (rebind_function == NULL)
+	   if (SvTYPE(SvRV(rebind_function)) != SVt_PVCV)
 	   {
 #ifdef NETSCAPE_LDAP
 	      ldap_set_rebind_proc(ld,NULL,NULL);
@@ -1040,7 +1006,10 @@ ldap_set_rebind_proc(ld,rebind_function)
 	      ldap_set_rebind_proc(ld,NULL);
 #endif
 	   } else {
-	      ldap_perl_rebindproc = rebind_function;
+	      if (ldap_perl_rebindproc == (SV*)NULL)
+	         ldap_perl_rebindproc = newSVsv(rebind_function);
+	      else
+	         SvSetSV(ldap_perl_rebindproc,rebind_function);
 #ifdef NETSCAPE_LDAP
 	      ldap_set_rebind_proc(ld,ns_internal_rebind_proc,NULL);
 #else
@@ -1082,7 +1051,7 @@ ldap_get_all_entries(ld,result)
 		 {
 		    for (count=0; vals[count] != NULL; count++)
 		    {
-		       SV* SVval = newSVpv(vals[count]->bv_val, vals[count]->bv_len);
+		       SV* SVval = newSVpv(vals[count]->bv_val,vals[count]->bv_len);
 		       av_push(AttributeValsArray, SVval);
 		    }
 		 }
@@ -1095,11 +1064,172 @@ ldap_get_all_entries(ld,result)
 	      hv_store(FullHash, dn, strlen(dn), HashRef, 0);
 	      if (dn != NULL)
 	         ldap_memfree(dn);
+#ifdef NETSCAPE_LDAP
 	      if (ber != NULL)
 	         ber_free(ber,0);
+#endif
 	   }
 	   RETVAL = FullHash;
 	}
 	OUTPUT:
 	RETVAL
 
+int
+ldap_is_ldap_url(url)
+	char *		url
+
+SV *
+ldap_url_parse(url)
+	char *		url
+	CODE:
+	{
+	   LDAPURLDesc *realcomp;
+	   int count,ret;
+
+	   HV*   FullHash = newHV();
+	   RETVAL = newRV((SV*)FullHash);
+
+	   ret = ldap_url_parse(url,&realcomp);
+	   if (ret == 0)
+	   {
+	      static char *host_key = "host";
+	      static char *port_key = "port";
+	      static char *dn_key = "dn";
+	      static char *attr_key = "attr";
+	      static char *scope_key = "scope";
+	      static char *filter_key = "filter";
+#ifdef NETSCAPE_LDAP
+	      static char *options_key = "options";
+	      SV* options = newSViv(realcomp->lud_options);
+#endif
+	      SV* host = newSVpv(realcomp->lud_host,0);
+	      SV* port = newSViv(realcomp->lud_port);
+	      SV* dn; /* = newSVpv(realcomp->lud_dn,0); */
+	      SV* scope = newSViv(realcomp->lud_scope);
+	      SV* filter = newSVpv(realcomp->lud_filter,0);
+	      AV* attrarray = newAV();
+	      SV* attribref = newRV((SV*) attrarray);
+
+	      if (realcomp->lud_dn)
+                 dn = newSVpv(realcomp->lud_dn,0);
+	      else
+	         dn = newSVpv("",0);
+
+	      if (realcomp->lud_attrs != NULL)
+	      {
+	         for (count=0; realcomp->lud_attrs[count] != NULL; count++)
+	         {
+	            SV* SVval = newSVpv(realcomp->lud_attrs[count],0);
+	            av_push(attrarray, SVval);
+	         }
+	      }
+	      hv_store(FullHash,host_key,strlen(host_key),host,0);
+	      hv_store(FullHash,port_key,strlen(port_key),port,0);
+	      hv_store(FullHash,dn_key,strlen(dn_key),dn,0);
+	      hv_store(FullHash,attr_key,strlen(attr_key),attribref,0);
+	      hv_store(FullHash,scope_key,strlen(scope_key),scope,0);
+	      hv_store(FullHash,filter_key,strlen(filter_key),filter,0);
+#ifdef NETSCAPE_LDAP
+	      hv_store(FullHash,options_key,strlen(options_key),options,0);
+#endif
+	      ldap_free_urldesc(realcomp);
+	   } else {
+	      RETVAL = &sv_undef;
+	   }
+	}
+	OUTPUT:
+	RETVAL
+
+int
+ldap_url_search(ld,url,attrsonly)
+	LDAP *		ld
+	char *		url
+	int		attrsonly
+
+int
+ldap_url_search_s(ld,url,attrsonly,result)
+	LDAP *		ld
+	char *		url
+	int		attrsonly
+	LDAPMessage *	result = NO_INIT
+	CODE:
+	{
+	   RETVAL = ldap_url_search_s(ld,url,attrsonly,&result);
+	}
+	OUTPUT:
+	RETVAL
+	result
+
+int
+ldap_url_search_st(ld,url,attrsonly,timeout,result)
+	LDAP *		ld
+	char *		url
+	int		attrsonly
+	LDAP_CHAR *	timeout
+	LDAPMessage *	result = NO_INIT
+	CODE:
+	{
+	   struct timeval *tv_timeout = NULL, timeoutbuf; 
+	   if (timeout && *timeout)
+	   {
+	      tv_timeout = &timeoutbuf;
+	      tv_timeout->tv_sec = atof(timeout);
+	      tv_timeout->tv_usec = 0;
+	   }
+	   RETVAL = ldap_url_search_st(ld,url,attrsonly,tv_timeout,&result);
+	}
+	OUTPUT:
+	RETVAL
+	result
+	
+int
+ldap_sort_entries(ld,chain,attr)
+	LDAP *		ld
+	LDAPMessage *	chain
+	char *		attr
+	CODE:
+	{
+	   RETVAL = ldap_sort_entries(ld,&chain,attr,strcasecmp);
+	}
+	OUTPUT:
+	RETVAL
+	chain
+
+#ifdef NETSCAPE_LDAP
+
+int
+ldap_multisort_entries(ld,chain,attrs)
+	LDAP *		ld
+	LDAPMessage *	chain
+	SV *		attrs
+	CODE:
+	{
+	   char **attrs_char;
+	   SV ** current;
+	   int count,arraylen;
+           if (SvTYPE(SvRV(attrs)) == SVt_PVAV)
+           {
+              if ((arraylen = av_len((AV *)SvRV(attrs))) < 0)
+              {
+                 New(1,attrs_char,2,char *);
+                 attrs_char[0] = NULL;
+              } else {
+                 New(1,attrs_char,arraylen+2,char *);
+                 for (count=0;count <= arraylen; count++)
+                 {
+                    current = av_fetch((AV *)SvRV(attrs),count,0);
+                    attrs_char[count] = SvPV(*current,na);
+                 }
+                 attrs_char[arraylen+1] = NULL;
+              }
+           } else {
+              croak("Net::LDAPapi::ldap_multisort_entries needs ARRAY reference as argument 3.");
+              XSRETURN(1);
+           }
+	   RETVAL = ldap_multisort_entries(ld,&chain,attrs_char,strcasecmp);
+	}
+	OUTPUT:
+	RETVAL
+	chain
+
+#endif

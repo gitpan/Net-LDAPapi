@@ -59,9 +59,8 @@ foreach $username (@ARGV)
    if ($ld->search_s($BASEDN,LDAP_SCOPE_SUBTREE,$filter,["uid","userpassword","mail"],0)
        != LDAP_SUCCESS)
    {
-      print $ld->errstring . "\n";
       $ld->unbind;
-      die;
+      die $ld->errstring;
    }
 
 #  Here we get a HASH of HASHes... All entries, keyed by DN and ATTRIBUTE.

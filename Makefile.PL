@@ -4,9 +4,11 @@ use Config;
 
 print "\n\nNet::LDAPapi Perl5 Module - by Clayton Donley <donley\@cig.mcel.mot.com>\n\n";
 
-print "Enter How I Should Run Perl5 (ex. /usr/bin/perl, c:\\perl\\bin\\perl):\n";
+print "Enter How I Should Run Perl5 (ex. /usr/bin/perl, c:\\perl\\bin\\perl),\n";
+print " (default: $Config{'perlpath'})? ";
 $pl_path = <>;
 chop $pl_path;
+$pl_path = $Config{'perlpath'} unless $pl_path;
 
 unless ($sdk)
 {
@@ -28,28 +30,34 @@ if ($include_ldap eq "")
 {
    if ($version eq 'ISODE')
    {
-      print "Location *above isode/ Include Dir (default: /usr/include):  ";
+      print "Location *above* isode/ Include Dir (default: /usr/include):  ";
    } else {
       print "Location of $lname Include Files (default: /usr/include):  ";
    }
-   $include_ldap = <> or $include_ldap = "/usr/include";
+   chomp($include_ldap = <>);
+   $include_ldap = "/usr/include" unless $include_ldap =~ /\S/;
 }
 
 # Sigh... isode-8 has isode/ldap.h, isode IC has isode/ldap/ldap.h
 if (! -r "$include_ldap/ldap.h")
 {
-   if (-r "$include_ldap/isode/ldap.h")
+   for $ldapsubdir ("ldap","isode","isode/ldap")
    {
-      $include_ldap .= " -I$include_ldap/isode";
-   } elsif (-r "$include_ldap/isode/ldap/ldap.h") {
-      $include_ldap .= " -I$include_ldap/isode/ldap";
+      if (-r "$include_ldap/$ldapsubdir/ldap.h")
+      {
+         $include_ldap .= "-I$include_ldap/$ldapsubdir";
+         last;
+      }
    }
 }
 
+
 if ($lib_ldap eq "")
 {
-   print "Location of $lname Library Files (default: /usr/lib):  ";
-   $lib_ldap = <> or $lib_ldap = "/usr/lib";
+   $df_lib = ($include_ldap =~ m%^(\S+)/include% ? "$1/lib" : "/usr/lib");
+   print "Location of $lname Library Files (default: $df_lib):  ";
+   chomp($lib_ldap = <>);
+   $lib_ldap = $df_lib unless $lib_ldap =~ /\S/;
 }
 
 if ($version eq "UMICH" && $kerblibs eq "")
@@ -65,14 +73,29 @@ if ($version eq "UMICH" && $kerblibs eq "")
 
 if ($version eq "NETSCAPE")
 {
-   if ($Config::Config{'osname'} eq 'MSWin32')
+   print "Using Netscape's NEW LDAPv3 Development Kit (default: n)? ";
+   $useldapv3 = <>;
+   if ($useldapv3 =~ /y.*/i)
    {
-      $ldap_lib = 'nsldap32v11';
-   } elsif ($Config::Config{'osname'} eq 'aix')
-   {
-      $ldap_lib = 'ldap10_shr';
+      if ($Config::Config{'osname'} eq 'MSWin32')
+      {
+         $ldap_lib = 'nsldapv30';
+      } elsif ($Config::Config{'osname'} eq 'aix')
+      {
+         $ldap_lib = 'ldapssl30_shr';
+      } else {
+         $ldap_lib = 'ldapssl30';
+      }
    } else {
-      $ldap_lib = 'ldap10';
+      if ($Config::Config{'osname'} eq 'MSWin32')
+      {
+         $ldap_lib = 'nsldap32v11';
+      } elsif ($Config::Config{'osname'} eq 'aix')
+      {
+         $ldap_lib = 'ldap10_shr';
+      } else {
+         $ldap_lib = 'ldap10';
+      }
    }
 }
 
@@ -87,16 +110,20 @@ constant.h:     constant.gen
 WriteMakefile(
 	'NAME'          =>      'Net::LDAPapi',
 	'VERSION_FROM'  =>      'LDAPapi.pm',
+	($include_ldap ne "/usr/include" ? (
 	'INC'           =>      "-I$include_ldap",
+	) : (
+	'INC'		=>	"",
+	)),
 	($version eq "NETSCAPE" ? (
 	'LIBS'          =>      ["-L$lib_ldap -l$ldap_lib"],
-	'DEFINE'        =>      '-DNETSCAPE_LDAP -Dbool=char -DHAS_BOOL',
+	'DEFINE'        =>      '-DNETSCAPE_LDAP',
 	) : $version eq "ISODE" ? (
 	'LIBS'          =>      ["-L$lib_ldap -lldap -llber -lisode"],
 	'DEFINE'        =>      '-DISODE_LDAP',
 	) : (
 	'LIBS'          =>      ["-L$lib_ldap -lldap -llber $kerblibs"],
-	'DEFINE'        =>      '',
+	'DEFINE'        =>      '-Dbool=char -DHAS_BOOL',
 	)),
 	'depend'        =>      { 'LDAPapi.c' => 'constant.h' },
 	'clean'         =>      { 'FILES'     => 'constant.h' },

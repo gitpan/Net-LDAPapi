@@ -1,5 +1,47 @@
 Revision history for Perl5 Net::LDAPapi Module.
 
+1.42  Sat Apr 25 22:27:22 CDT 1998
+	- Added named arguments to all methods
+	- Got rid of a few old ber_free's that were causing problems
+	- Fixed the sort functions (Thanks to Miguel Marques)
+	- Added the ldap_url functions
+	- I was destroying error messages before I printed them in a few
+	  of the ldapwalk examples.  Whoops.  Fixed.
+	- Fixed problem with Out of Memory errors on some platforms with
+	  the get_all_values function.
+	- Fixed a multitude of problems with rebinding
+	- Resolved issue resulting in dumped core on modify where NULL
+	  values were passed.
+	- Much more extensive testing by the author against both Netscape
+	  and University of Michigan libraries.  Many small corrections.
+	- Added Makefile.PL options for Netscape LDAPv3 SDK.  No v3 calls
+	  added yet.
+1.40a Wed Jan 28 11:20:51 CST 1998
+	- sort_entries and multisort_entries have been added with the single
+	  arguments $attr and \@attr respectively.  Neither seem to work
+	  properly on my system when sorting anything besides DN (attr =
+	  non-null).  Please try this function on your system and let me
+	  know if it you can get it to work.  If so, I will finish adding
+	  this function with another argument to specify a perl based compare
+          function for the sort.
+	- Lots of changes from Hallvard B. Furuseth <h.b.furuseth@usit.uio.no>
+          Including:
+           o Got rid of extra checks in LDAPapi.pm where checks exist in
+	      XS or Perl.
+	   o Cleaned up ldap_<add/modify>[_s] with a few simple changes to
+	      hash2mod() function.  Also fixed bug in that function that
+	      causes problems when you supply an empty hash.
+	   o Small typos and bug fixes in test.pl fixed.
+	   o Error string is now retrieved when requested, rather than after
+	      every call (What was I thinking when I did this?  Who knows....)
+	   o Fixed some reverse logic in ldap_<set/get>_option in the XS file.
+	- Changed memory related calls to use 'New' and 'Safefree' macros,
+	  which seems to be what the perlguts document suggests.
+	- Got rid of the ber_free define in ldap_compat.h when using UMICH.
+	  This was causing core dumps on some platforms.
+	- Added ldap_mod_attr.pl to the examples.  A wonderful script from
+	  Andrew J Cosgriff <ajc@bing.wattle.id.au>.
+
 1.40 Wed Jan 21 11:12:24 CST 1998
 	- I never did include the new version of web500.pl that supports
           Add functionality.  It did exist, and I've included it with this

@@ -11,6 +11,7 @@ constant.gen
 ldap_compat.h
 test.pl
 typemap
+examples/ldap_mod_attr.pl
 examples/ldapwalk.pl
 examples/ldapwalk2.pl
 examples/testwrite.pl

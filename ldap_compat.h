@@ -5,8 +5,11 @@
 /* Date:   Tue Aug 26 13:13:32 CDT 1997                                     */
 /****************************************************************************/
 
-#define ldap_memfree(x) safefree(x)
-#define ber_free(x,y) safefree(x)
+#define ldap_memfree(x) Safefree(x)
+
+#ifdef ISODE_LDAP
+# define ber_free(x,y) Safefree(x)
+#endif
 
 #define LDAP_OPT_DEREF 2
 #define LDAP_OPT_SIZELIMIT 3

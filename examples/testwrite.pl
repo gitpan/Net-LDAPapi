@@ -16,8 +16,8 @@ use Net::LDAPapi;
 my $ENTRYDN = "cn=New Guy, o=Org, c=US";
 
 # This is the DN and password for an Administrator
-my $ROOTDN = "cn=admin, o=Org, c=US";
-my $ROOTPW = "123456";
+my $ROOTDN = "cn=root, o=Org, c=US";
+my $ROOTPW = "abc123";
 
 my $ldap_server = "localhost";
 
@@ -30,7 +30,7 @@ if ($ld == -1)
 
 if ($ld->bind_s($ROOTDN,$ROOTPW) != LDAP_SUCCESS)
 {
-   die $ld->errstring . "\n";
+   die $ld->errstring;
 }
 
 my %testwrite = (
@@ -63,6 +63,7 @@ if ($ld->modify_s($ENTRYDN,\%testwrite) != LDAP_SUCCESS)
 
 print "Entry Modified.\n";
 
+exit;
 #
 # Delete the entry for $ENTRYDN
 #

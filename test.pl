@@ -18,9 +18,9 @@ print "ok 1\n";
 ## Change these values for test to work...
 ##
 
-$BASEDN    = "";
-$filter    = "(mail=donley\@cig.mot.com)";
-#$ldap_host = "ldap.four11.com";
+$BASEDN    = "o=Org,c=US";
+$filter    = "(objectclass=*)";
+$ldap_host = "";
 
 if (!$ldap_host)
 {
@@ -31,7 +31,7 @@ if (!$ldap_host)
 ##  Initialize LDAP Connection
 ##
 
-if (($ld = new Net::LDAPapi($ldap_host)) == -1)
+if (($ld = new Net::LDAPapi(-host=>$ldap_host)) == -1)
 {
    print "not ok 2\n";
    exit -1; 
@@ -58,7 +58,7 @@ print "ok 3\n";
 
 if ($ld->search_s($BASEDN,LDAP_SCOPE_SUBTREE,$filter,\@attrs,0) != LDAP_SUCCESS)
 {
-   $ld->perror($ld,"search_s");
+   $ld->perror("search_s");
    print  "not ok 4\n";
 }
 print "ok 4\n";
@@ -79,14 +79,14 @@ print "ok 5\n";
 ## next_entry  - Get Next Matched Entry
 ##
 
-   for ($ent = $ld->first_entry; $ent != ""; $ent = $ld->next_entry)
+   for ($ent = $ld->first_entry; $ent; $ent = $ld->next_entry)
    {
       
 ##
 ## ldap_get_dn  -  Get DN for Matched Entries
 ##
 
-      if (($dn = $ld->get_dn) ne "" )
+      if ($ld->get_dn ne "" )
       {
          print "ok 6\n";
       } else {

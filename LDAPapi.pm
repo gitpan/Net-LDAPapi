@@ -26,7 +26,9 @@ require AutoLoader;
 	ldap_explode_dns ldap_first_attribute ldap_next_attribute
 	ldap_get_values ldap_get_values_len ldap_bind ldap_bind_s
 	ldapssl_client_init ldapssl_init ldapssl_install_routines
-	ldap_get_all_entries
+	ldap_get_all_entries ldap_sort_entries ldap_multisort_entries
+	ldap_is_ldap_url ldap_url_parse ldap_url_search ldap_url_search_s
+	ldap_url_search_st
 	LDAPS_PORT
 	LDAP_ADMIN_LIMIT_EXCEEDED
 	LDAP_AFFECTS_MULTIPLE_DSAS
@@ -147,7 +149,7 @@ require AutoLoader;
 	LDAP_VERSION1
 	LDAP_VERSION2
 );
-$VERSION = '1.40';
+$VERSION = '1.42';
 
 sub AUTOLOAD {
     # This AUTOLOAD is used to 'autoload' constants from the constant()
@@ -174,21 +176,24 @@ bootstrap Net::LDAPapi $VERSION;
 
 sub new
 {
-   my ($this,$host,$port) = @_;
+   my ($this,@args) = @_;
    my $class = ref($this) || $this;
    my $self = {};
    my $ld;
    bless $self, $class;
 
+   my ($host,$port) = $self->rearrange(['HOST','PORT'],@args);
+
    $host = "localhost" unless $host;
    $port = $self->LDAP_PORT unless $port;
+
    $ld = ldap_open($host,$port);
    if ($ld == 0)
    {
        return -1;
    }
    $self->{"ld"} = $ld;
-   $self->{"err"} = 0;
+   $self->{"errno"} = 0;
    $self->{"errstring"} = undef;
    return $self;
 }
@@ -197,19 +202,11 @@ sub DESTROY {};
 
 sub abandon
 {
-   my ($self,$msgid) = @_;
+   my ($self,@args) = @_;
 
    my ($errdn,$extramsg,$status);
 
-   if (not ref $self)
-   {
-      croak("$self is not a reference");
-   }
-
-   if ($self->{"ld"} == 0)
-   {
-      croak("No LDAP Connection Open");
-   }
+   my ($msgid) = $self->rearrange(['MSGID'],@args);
 
    if ($msgid < 0)
    {
@@ -219,26 +216,17 @@ sub abandon
    if (($status = ldap_abandon($self->{"ld"},$msgid)) != $self->LDAP_SUCCESS)
    {
       $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
-      $self->{"errstring"} = ldap_err2string($self->{"errno"});
    }
    return $status;
 }
 
 sub add
 {
-   my ($self,$dn,$mod) = @_;
+   my ($self,@args) = @_;
 
    my ($errdn,$extramsg,$msgid);
 
-   if (not ref $self)
-   {
-      croak("$self is not a reference");
-   }
-
-   if ($self->{"ld"} == 0)
-   {
-      croak("No LDAP Connection Open");
-   }
+   my ($dn,$mod) = $self->rearrange(['DN','MOD'],@args);
 
    if ($dn eq "")
    {
@@ -253,26 +241,17 @@ sub add
    if (($msgid = ldap_add($self->{"ld"},$dn,$mod)) < 0)
    {
       $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
-      $self->{"errstring"} = ldap_err2string($self->{"errno"});
    }
    return $msgid;
 }
 
 sub add_s
 {
-   my ($self,$dn,$mod) = @_;
+   my ($self,@args) = @_;
 
    my ($errdn,$extramsg,$status);
 
-   if (not ref $self)
-   {
-      croak("$self is not a reference");
-   }
-
-   if ($self->{"ld"} == 0)
-   {
-      croak("No LDAP Connection Open");
-   }
+   my ($dn,$mod) = $self->rearrange(['DN','MOD'],@args);
 
    if ($dn eq "")
    {
@@ -287,26 +266,17 @@ sub add_s
    if (($status = ldap_add_s($self->{"ld"},$dn,$mod)) != $self->LDAP_SUCCESS)
    {
       $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
-      $self->{"errstring"} = ldap_err2string($self->{"errno"});
    }
    return $status;
 }
 
 sub bind
 {
-   my ($self,$dn,$pass,$authtype) = @_;
+   my ($self,@args) = @_;
 
    my ($errdn,$extramsg,$msgid);
 
-   if (not ref $self)
-   {
-      croak("$self is not a reference");
-   }
-
-   if ($self->{"ld"} == 0)
-   {
-      croak("No LDAP connection open");
-   }
+   my ($dn,$pass,$authtype) = $self->rearrange(['DN','PASSWORD','TYPE'],@args);
 
    $dn = "" unless $dn;
    $pass = "" unless $pass;
@@ -317,26 +287,17 @@ sub bind
    if ($msgid < 0)
    {
       $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
-      $self->{"errstring"} = ldap_err2string($self->{"errno"});
    }
    return($msgid);
 }
 
 sub bind_s
 {
-   my ($self,$dn,$pass,$authtype) = @_;
+   my ($self,@args) = @_;
 
    my ($errdn,$extramsg,$status);
 
-   if (not ref $self)
-   {
-      croak("$self is not a reference");
-   }
-
-   if ($self->{"ld"} == 0)
-   {
-      croak("No LDAP connection open");
-   }
+   my ($dn,$pass,$authtype) = $self->rearrange(['DN','PASSWORD','TYPE'],@args);
 
    $dn = "" unless $dn;
    $pass = "" unless $pass;
@@ -347,26 +308,18 @@ sub bind_s
    if ($status != $self->LDAP_SUCCESS)
    {
       $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
-      $self->{"errstring"} = ldap_err2string($self->{"errno"});
    }
    return $status;
 }
 
 sub compare
 {
-   my ($self,$dn,$attr,$value) = @_;
+   my ($self,@args) = @_;
 
    my ($errdn,$extramsg,$msgid);
 
-   if (not ref $self)
-   {
-      croak("$self is not a reference");
-   }
-
-   if ($self->{"ld"} == 0)
-   {
-      croak("No LDAP Connection Open");
-   }
+   my ($dn,$attr,$value) = $self->rearrange(['DN','ATTR',['VALUE','VALUES']],
+      @args);
 
    if ($dn eq "")
    {
@@ -378,26 +331,18 @@ sub compare
    if ($msgid < 0)
    {
       $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
-      $self->{"errstring"} = ldap_err2string($self->{"errno"});
    }
    return($msgid);
 }
 
 sub compare_s
 {
-   my ($self,$dn,$attr,$value) = @_;
+   my ($self,@args) = @_;
 
    my ($errdn,$extramsg,$status);
 
-   if (not ref $self)
-   {
-      croak("$self is not a reference");
-   }
-
-   if ($self->{"ld"} == 0)
-   {
-      croak("No LDAP Connection Open");
-   }
+   my ($dn,$attr,$value) = $self->rearrange(['DN','ATTR',['VALUE','VALUES']],
+      @args);
 
    if ($dn eq "")
    {
@@ -408,7 +353,6 @@ sub compare_s
       != $self->LDAP_SUCCESS)
    {
       $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
-      $self->{"errstring"} = ldap_err2string($self->{"errno"});
    }
    return $status;
 }
@@ -418,16 +362,6 @@ sub count_entries
    my ($self) = @_;
 
    my ($number);
-
-   if (not ref $self)
-   {
-      croak("$self is not a reference");
-   }
-
-   if ($self->{"ld"} == 0)
-   {
-      croak("No LDAP Connection Open");
-   }
 
    if ($self->{"result"} == 0)
    {
@@ -440,19 +374,11 @@ sub count_entries
 
 sub delete
 {
-   my ($self,$dn) = @_;
+   my ($self,@args) = @_;
 
    my ($errdn,$extramsg,$msgid);
 
-   if (not ref $self)
-   {
-      croak("$self is not a reference");
-   }
-
-   if ($self->{"ld"} == 0)
-   {
-      croak("No LDAP Connection Open");
-   }
+   my ($dn) = $self->rearrange(['DN'], @args);
 
    if ($dn eq "")
    {
@@ -464,26 +390,17 @@ sub delete
    if ($msgid < 0)
    {
       $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
-      $self->{"errstring"} = ldap_err2string($self->{"errno"});
    }
    return($msgid);
 }
 
 sub delete_s
 {
-   my ($self,$dn) = @_;
+   my ($self,@args) = @_;
 
    my ($errdn,$extramsg,$status);
 
-   if (not ref $self)
-   {
-      croak("$self is not a reference");
-   }
-
-   if ($self->{"ld"} == 0)
-   {
-      croak("No LDAP Connection Open");
-   }
+   my ($dn) = $self->rearrange(['DN'],@args);
 
    if ($dn eq "")
    {
@@ -493,16 +410,17 @@ sub delete_s
    if (($status = ldap_delete_s($self->{"ld"},$dn)) != $self->LDAP_SUCCESS)
    {
       $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
-      $self->{"errstring"} = ldap_err2string($self->{"errno"});
    }
    return $status;
 }
 
 sub dn2ufn
 {
-   my ($self,$dn) = @_;
+   my ($self,@args) = @_;
 
    my ($ufn);
+
+   my ($dn) = $self->rearrange(['DN'],@args);
 
    $ufn = ldap_dn2ufn($dn);
    return $ufn;
@@ -510,9 +428,11 @@ sub dn2ufn
 
 sub explode_dn
 {
-   my ($self,$dn,$notypes) = @_;
+   my ($self,@args) = @_;
 
    my (@components);
+
+   my ($dn,$notypes) = $self->rearrange(['DN','NOTYPES'],@args);
 
    @components = ldap_explode_dn($dn,$notypes);
    return @components;
@@ -520,9 +440,11 @@ sub explode_dn
 
 sub explode_rdn
 {
-   my ($self,$rdn,$notypes) = @_;
+   my ($self,@args) = @_;
 
    my (@components);
+
+   my ($rdn,$notypes) = $self->rearrange(['RDN','NOTYPES'],@args);
 
    @components = ldap_explode_rdn($rdn,$notypes);
    return @components;
@@ -531,16 +453,6 @@ sub explode_rdn
 sub first_entry
 {
    my ($self) = @_;
-
-   if (not ref $self)
-   {
-      croak("$self is not a reference");
-   }
-
-   if ($self->{"ld"} == 0)
-   {
-      croak("No LDAP Connection Open");
-   }
 
    if ($self->{"result"} == 0)
    {
@@ -555,16 +467,6 @@ sub first_entry
 sub next_entry
 {
    my ($self) = @_;
-
-   if (not ref $self)
-   {
-      croak("$self is not a reference");
-   }
-
-   if ($self->{"ld"} == 0)
-   {
-      croak("No LDAP Connection Open");
-   }
 
    if ($self->{"entry"} == 0)
    {
@@ -581,16 +483,6 @@ sub first_attribute
    my ($self) = @_;
 
    my ($attr,$ber);
-
-   if (not ref $self)
-   {
-      croak("$self is not a reference");
-   }
-
-   if ($self->{"ld"} == 0)
-   {
-      croak("No LDAP Connection Open");
-   }
 
    if ($self->{"entry"} == 0)
    {
@@ -610,16 +502,6 @@ sub next_attribute
 
    my ($attr);
 
-   if (not ref $self)
-   {
-      croak("$self is not a reference");
-   }
-
-   if ($self->{"ld"} == 0)
-   {
-      croak("No LDAP Connection Open");
-   }
-
    if ($self->{"entry"} == 0)
    {
       croak("No Current Entry");
@@ -634,20 +516,16 @@ sub next_attribute
 
    if (!$attr)
    {
-      ber_free($self->{"ber"},0);
-      $self->{"ber"} = 0;
+      undef $self->{"ber"};
    }
    return $attr;
 }
 
 sub perror
 {
-   my ($self,$msg) = @_;
+   my ($self,@args) = @_;
 
-   if ($self->{"ld"} == 0)
-   {
-      croak("No LDAP Connection Open");
-   }
+   my ($msg) = $self->rearrange(['MSG'],@args);
 
    ldap_perror($self->{"ld"},$msg);
 }
@@ -657,16 +535,6 @@ sub get_dn
    my ($self) = @_;
 
    my ($dn);
-
-   if (not ref $self)
-   {
-      croak("$self is not a reference");
-   }
-
-   if ($self->{"ld"} == 0)
-   {
-      croak("No LDAP Connection Open");
-   }
 
    if ($self->{"entry"} == 0)
    {
@@ -680,19 +548,11 @@ sub get_dn
 
 sub get_values
 {
-   my ($self,$attr) = @_;
+   my ($self,@args) = @_;
 
    my (@vals);
 
-   if (not ref $self)
-   {
-      croak("$self is not a reference");
-   }
-
-   if ($self->{"ld"} == 0)
-   {
-      croak("No LDAP Connection Open");
-   }
+   my ($attr) = $self->rearrange(['ATTR'],@args);
 
    if ($self->{"entry"} == 0)
    {
@@ -711,19 +571,11 @@ sub get_values
 
 sub get_values_len
 {
-   my ($self,$attr) = @_;
+   my ($self,@args) = @_;
 
    my (@vals);
 
-   if (not ref $self)
-   {
-      croak("$self is not a reference");
-   }
-
-   if ($self->{"ld"} == 0)
-   {
-      croak("No LDAP Connection Open");
-   }
+   my ($attr) = $self->rearrange(['ATTR'],@args);
 
    if ($self->{"entry"} == 0)
    {
@@ -757,19 +609,11 @@ sub msgfree
 
 sub modify
 {
-   my ($self,$dn,$mod) = @_;
+   my ($self,@args) = @_;
 
    my ($errdn,$extramsg,$msgid);
 
-   if (not ref $self)
-   {
-      croak("$self is not a reference");
-   }
-
-   if ($self->{"ld"} == 0)
-   {
-      croak("No LDAP Connection Open");
-   }
+   my ($dn,$mod) = $self->rearrange(['DN','MOD'],@args);
 
    if ($dn eq "")
    {
@@ -786,26 +630,17 @@ sub modify
    if ($msgid < 0)
    {
       $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
-      $self->{"errstring"} = ldap_err2string($self->{"errno"});
    }
    return $msgid;
 }
 
 sub modify_s
 {
-   my ($self,$dn,$mod) = @_;
+   my ($self,@args) = @_;
 
    my ($errdn,$extramsg,$status);
 
-   if (not ref $self)
-   {
-      croak("$self is not a reference");
-   }
-
-   if ($self->{"ld"} == 0)
-   {
-      croak("No LDAP Connection Open");
-   }
+   my ($dn,$mod) = $self->rearrange(['DN','MOD'],@args);
 
    if ($dn eq "")
    {
@@ -820,45 +655,37 @@ sub modify_s
    if (($status = ldap_modify_s($self->{"ld"},$dn,$mod)) != $self->LDAP_SUCCESS)
    {
       $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
-      $self->{"errstring"} = ldap_err2string($self->{"errno"});
    }
    return $status;
 }
 
 sub modrdn2
 {
-   my ($self,$dn,$newrdn,$delete) = @_;
+   my ($self,@args) = @_;
    my ($msgid,$errdn,$extramsg);
 
-   if ($self->{"ld"} == 0)
-   {
-      croak("No LDAP Connection Open");
-   }
+   my ($dn,$newrdn,$delete) = $self->rearrange(['DN','NEWRDN','DELETE'],@args);
 
    $msgid = ldap_modrdn2($self->{"ld"},$dn,$newrdn,$delete);
    if ($msgid < 0)
    {
       $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
-      $self->{"errstring"} = ldap_err2string($self->{"errno"});
    }
    return $msgid;
 }
 
 sub modrdn2_s
 {
-   my ($self,$dn,$newrdn,$delete) = @_;
+   my ($self,@args) = @_;
    my ($status,$errdn,$extramsg);
 
-   if ($self->{"ld"} == 0)
-   {
-      croak("No LDAP Connection Open");
-   }
+   my ($dn,$newrdn,$delete) = $self->rearrange(['DN','NEWRDN','DELETE'],@args);
+
 
    $status = ldap_modrdn2_s($self->{"ld"},$dn,$newrdn,$delete);
    if ($status != $self->LDAP_SUCCESS)
    {
       $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
-      $self->{"errstring"} = ldap_err2string($self->{"errno"});
    }
    return $status;
 }
@@ -866,13 +693,11 @@ sub modrdn2_s
 
 sub result
 {
-   my ($self,$msgid,$allnone,$timeout) = @_;
+   my ($self,@args) = @_;
    my ($result,$status,$err);
 
-   if ($self->{"ld"} == 0)
-   {
-      croak("No LDAP connection open");
-   }
+   my ($msgid,$allnone,$timeout) = $self->rearrange(['MSGID','ALL','TIMEOUT'],
+	@args);
 
    if ($msgid < 0)
    {
@@ -886,8 +711,7 @@ sub result
       $err = ldap_result2error($self->{"ld"},$self->{"result"},0);
       if ($err != $self->LDAP_SUCCESS)
       {
-         $self->{"err"} = $err;
-         $self->{"errstring"} = ldap_err2string($err);
+         $self->{"errno"} = $err;
       }
    }
    return $status;
@@ -895,78 +719,166 @@ sub result
 
 sub result2error
 {
-   my ($self,$freeit) = @_;
+   my ($self,@args) = @_;
 
-   if ($self->{"ld"} == 0)
+   my ($freeit) = $self->rearrange(['FREEIT'],@args);
+   
+   if (!$self->{"result"})
    {
-      croak("No LDAP Connection Open");
+      croak("No Current Result");
    }
+
+   $self->{"errno"} = ldap_result2error($self->{"ld"},$self->{"result"},$freeit);
+   return $self->{"errno"};
+}
+
+sub is_ldap_url
+{
+   my ($self,@args) = @_;
+
+   my ($url) = $self->rearrange(['URL'],@args);
+
+   return ldap_is_ldap_url($url);
+}
+
+sub url_parse
+{
+   my ($self,@args) = @_;
+   my ($url) = $self->rearrange(['URL'],@args);
+
+   return ldap_url_parse($url);
+}
+
+sub url_search
+{
+   my ($self,@args) = @_;
+   my ($msgid,$errdn,$extramsg);
+
+   my ($url,$attrsonly) = $self->rearrange(['URL','ATTRSONLY'],@args);
+
+   if (($msgid = ldap_url_search($self->{"ld"},$url,$attrsonly)) < 0)
+   {
+      $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
+   }
+   return $msgid;
+}
+
+sub url_search_s
+{
+   my ($self,@args) = @_;
+   my ($result,$status,$errdn,$extramsg);
+
+   my ($url,$attrsonly) = $self->rearrange(['URL','ATTRSONLY'],
+      @args);
+
+   if (($status = ldap_url_search_s($self->{"ld"},$url,$attrsonly,$result)) !=
+      $self->LDAP_SUCCESS)
+   {
+      $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
+   }
+   $self->{"result"} = $result;
+   return $status;
+}
+
+sub url_search_st
+{
+   my ($self,@args) = @_;
+   my ($result,$status,$errdn,$extramsg);
+
+   my ($url,$attrsonly,$timeout) = $self->rearrange(['URL','ATTRSONLY',
+      'TIMEOUT'],@args);
+
+   if (($status = ldap_url_search_st($self->{"ld"},$url,$attrsonly,$timeout,
+      $result)) != $self->LDAP_SUCCESS)
+   {
+      $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
+   }
+   $self->{"result"} = $result;
+   return $status;
+}
+
+sub sort_entries
+{
+   my ($self,@args) = @_;
+   my ($status,$errdn,$extramsg);
+
+   my ($attr) = $self->rearrange(['ATTR'],@args);
 
    if (!$self->{"result"})
    {
       croak("No Current Result");
    }
 
-   $self->{"err"} = ldap_result2error($self->{"ld"},$self->{"result"},$freeit);
-   $self->{"errstring"} = ldap_err2string($self->{"err"});
-   return $self->{"err"};
+   $status = ldap_sort_entries($self->{"ld"},$self->{"result"},$attr);
+   if ($status != $self->LDAP_SUCCESS)
+   {
+      $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
+   }
+   return $status;
+}
+
+sub multisort_entries
+{
+   my ($self,@args) = @_;
+   my ($status,$errdn,$extramsg);
+
+   my ($attr) = $self->rearrange(['ATTR'],@args);
+
+   if (!$self->{"result"})
+   {
+      croak("No Current Result");
+   }
+
+   $status = ldap_multisort_entries($self->{"ld"},$self->{"result"},$attr);
+   if ($status != $self->LDAP_SUCCESS)
+   {
+      $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
+   }
+   return $status;
 }
 
 sub search
 {
-   my ($self,$basedn,$scope,$filter,$attrs,$attrsonly) = @_;
+   my ($self,@args) = @_;
    my ($msgid,$errdn,$extramsg);
 
-   if ($self->{"ld"} == 0)
-   {
-      croak("No LDAP connection open");
-   }
+   my ($basedn,$scope,$filter,$attrs,$attrsonly) =
+	$self->rearrange(['BASEDN','SCOPE','FILTER','ATTRS','ATTRSONLY'],
+	@args);
 
    if ($filter eq "")
    {
-      croak("No Filter Passed as Argument 3");
+      croak("No Filter Specified");
    }
 
-#   if ($basedn eq "")
-#   {
-#      croak("No Base DN Passed as Argument 1");
-#   }
    $msgid = ldap_search($self->{"ld"},$basedn,$scope,$filter,$attrs,$attrsonly);
 
    if ($msgid < 0)
    {
       $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
-      $self->{"errstring"} = ldap_err2string($self->{"errno"});
    }
    return($msgid);
 }
 
 sub search_s
 {
-   my ($self,$basedn,$scope,$filter,$attrs,$attrsonly) = @_;
+   my ($self,@args) = @_;
    my ($result,$status,$errdn,$extramsg);
 
-   if ($self->{"ld"} == 0)
-   {
-      croak("No LDAP connection open");
-   }
+  my ($basedn,$scope,$filter,$attrs,$attrsonly) =
+	$self->rearrange(['BASEDN','SCOPE','FILTER','ATTRS','ATTRSONLY'],
+	@args);
 
    if ($filter eq "")
    {
       croak("No Filter Passed as Argument 3");
    }
 
-#   if ($basedn eq "")
-#   {
-#      croak("No Base DN Passed as Argument 1");
-#   }
-
    $status = ldap_search_s($self->{"ld"},$basedn,$scope,$filter,$attrs,
       $attrsonly,$result);
    if ($status != $self->LDAP_SUCCESS)
    {
       $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
-      $self->{"errstring"} = ldap_err2string($self->{"errno"});
    }
    $self->{"result"} = $result;
    return $status;
@@ -974,23 +886,17 @@ sub search_s
 
 sub search_st
 {
-   my ($self,$basedn,$scope,$filter,$attrs,$attrsonly,$timeout) = @_;
+   my ($self,@args) = @_;
    my ($result,$status,$errdn,$extramsg);
 
-   if ($self->{"ld"} == 0)
-   {
-      croak("No LDAP connection open");
-   }
+   my ($basedn,$scope,$filter,$attrs,$attrsonly,$timeout) =
+	$self->rearrange(['BASEDN','SCOPE','FILTER','ATTRS','ATTRSONLY',
+	'TIMEOUT'], @args);
 
    if ($filter eq "")
    {
       croak("No Filter Passed as Argument 3");
    }
-
-#   if ($basedn eq "")
-#   {
-#      croak("No Base DN Passed as Argument 1");
-#   }
 
    $status = ldap_search_st($self->{"ld"},$basedn,$scope,$filter,$attrs,
       $attrsonly,$result,$timeout);
@@ -1005,13 +911,10 @@ sub search_st
 
 sub get_option
 {
-   my ($self,$option,$optdata) = @_;
+   my ($self,@args) = @_;
    my ($status);
 
-   if ($self->{"ld"} == 0)
-   {
-      croak("No LDAP connection open");
-   }
+   my ($option,$optdata) = $self->rearrange(['OPTION','OPTDATA'], @args);
 
    $status = ldap_get_option($self->{"ld"},$option,$$optdata);
 
@@ -1020,13 +923,10 @@ sub get_option
 
 sub set_option
 {
-   my ($self,$option,$optdata) = @_;
+   my ($self,@args) = @_;
    my ($status);
 
-   if ($self->{"ld"} == 0)
-   {
-      croak("No LDAP connection open");
-   }
+   my ($option,$optdata) = $self->rearrange(['OPTION','OPTDATA'],@args);
 
    $status = ldap_set_option($self->{"ld"},$option,$optdata);
 
@@ -1035,15 +935,18 @@ sub set_option
 
 sub set_rebind_proc
 {
-   my ($self,$rebindproc) = @_;
+   my ($self,@args) = @_;
    my ($status);
 
-   if ($self->{"ld"} == 0)
-   {
-      croak("No LDAP connection open");
-   }
+   my ($rebindproc) = $self->rearrange(['REBINDPROC'],@args);
 
-   $status = ldap_set_rebind_proc($self->{"ld"},$rebindproc);
+   if (ref($rebindproc) eq "CODE")
+   {
+      $status = ldap_set_rebind_proc($self->{"ld"},$rebindproc);
+   } else {
+      croak("REBINDPROC is not a CODE Reference");
+   }
+   return $status;
 }
 
 sub get_all_entries
@@ -1051,17 +954,7 @@ sub get_all_entries
    my ($self) = shift;
    my $record;
 
-   if (not ref $self)
-   {
-      croak("$self is not a reference");
-   }
-
-   if ($self->{"ld"} == 0)
-   {
-      croak("No LDAP Connection Open");
-   }
-
-   if ($self->{"result"} == 0)
+   if (!$self->{"result"})
    {
       croak("NULL Result");
    }
@@ -1074,19 +967,16 @@ sub unbind
 {
    my ($self) = @_;
 
-   if ($self->{"ld"} == 0)
-   {
-      croak("No LDAP Connection Open");
-   }
-
    ldap_unbind($self->{"ld"});
-   $self = {};
 }
 
 sub ssl_client_init
 {
-   my ($self,$certdbpath,$certdbhandle) = @_;
+   my ($self,@args) = @_;
    my ($status);
+
+   my ($certdbpath,$certdbhandle) = $self->rearrange(['DBPATH','DBHANDLE'],
+	@args);
 
    $status = ldapssl_client_init($certdbpath,$certdbhandle);
    return($status);
@@ -1097,11 +987,6 @@ sub ssl
    my ($self) = @_;
    my ($status);
 
-   if ($self->{"ld"} == 0)
-   {
-      croak("No LDAP Connection Open");
-   }
-
    $status = ldapssl_install_routines($self->{"ld"});
    return $status;
 }
@@ -1109,40 +994,30 @@ sub ssl
 sub entry
 {
    my ($self) = @_;
-   if (not ref $self)
-   {
-      croak("$self is not a reference");
-   }
    return $self->{"entry"};
 }
 
 sub err
 {
    my ($self) = @_;
-   if (not ref $self)
-   {
-      croak("$self is not a reference");
-   }
-   return $self->{"err"};
+   return $self->{"errno"};
+}
+
+sub errno
+{
+   my ($self) = @_;
+   return $self->{"errno"};
 }
 
 sub errstring
 {
    my ($self) = @_;
-   if (not ref $self)
-   {
-      croak("$self is not a reference");
-   }
-   return $self->{"errstring"};
+   return ldap_err2string($self->{"errno"});
 }
 
 sub ld
 {
    my ($self) = @_;
-   if (not ref $self)
-   {
-      croak("$self is not a reference");
-   }
    return $self->{"ld"};
 }
 
@@ -1152,19 +1027,50 @@ sub msgid
 
    my ($msgid);
 
-   if (not ref $self)
-   {
-      croak("$self is not a reference");
-   }
-
-   if ($self->{"ld"} == 0)
-   {
-      croak("No LDAP Connection Open");
-   }
-
    $msgid = ldap_msgid($self->{"ld"},$self->{"result"});
    return $msgid;
 } 
+
+# This subroutine was borrowed from CGI.pm.  It does a wonderful job and
+# is much better than anything I created in my first attempt at named
+# arguments.  I may replace it later.
+
+sub rearrange {
+    my($self,$order,@param) = @_;
+    return () unless @param;
+   
+    return @param unless (defined($param[0]) && substr($param[0],0,1) eq '-');
+
+    my $i;
+    for ($i=0;$i<@param;$i+=2) {
+        $param[$i]=~s/^\-//;     # get rid of initial - if present
+        $param[$i]=~tr/a-z/A-Z/; # parameters are upper case
+    }
+    
+    my(%param) = @param;                # convert into associative array
+    my(@return_array);
+   
+    my($key)='';
+    foreach $key (@$order) {
+        my($value);
+        # this is an awful hack to fix spurious warnings when the
+        # -w switch is set.
+        if (ref($key) && ref($key) eq 'ARRAY') {
+            foreach (@$key) {
+                last if defined($value);
+                $value = $param{$_};
+                delete $param{$_};
+            }
+        } else {
+            $value = $param{$key};
+            delete $param{$key};
+        }
+        push(@return_array,$value);
+    }
+    push (@return_array,$self->make_attributes(\%param)) if %param;
+    return (@return_array);
+}
+
 
 # Preloaded methods go here.
 
@@ -1189,11 +1095,8 @@ Net::LDAPapi - Perl5 Module Supporting LDAP API
   based Directory.
 
   Versions beginning with 1.40 support both the original "C API" and
-  new "Perl OO" style interface methods.
-
-  The new "Perl OO" style interface methods are covered by the man page.
-  The old manpage is included as a text file for those still using the old
-  "C API" interface.
+  new "Perl OO" style interface methods.  With version 1.42, I've added
+  named arguments.
 
 =head1 THE INTIAL CONNECTION
 
@@ -1207,6 +1110,13 @@ Net::LDAPapi - Perl5 Module Supporting LDAP API
   the standard LDAP port (389), you will also need to supply the portnumber.
 
   $ld = new Net::LDAPapi($hostname,15555);
+
+  The new method can also be called with named arguments.
+
+  $ld = new Net::LDAPapi(-host=>$hostname,-port=>15389);
+
+  Note that with namd arguments, the order of the arguments is
+  insignificant.
 
 =head1 BINDING
 
@@ -1244,7 +1154,13 @@ Net::LDAPapi - Perl5 Module Supporting LDAP API
   the entry for result later in the man page, as well as the 'ldapwalk.pl'
   example for further information on obtaining results from Asynchronous
   operations.
-  
+
+  The bind operations can also accept named arguments.
+
+  $status = $ld->bind_s(-dn=>$dn,-password=>$password,-type=>LDAP_AUTH_SIMPLE);
+
+  As with all other commands that support named arguments, the order of
+  the arguments makes no difference.
 
 =head1 GENERATING AN ADD/MODIFY HASH
 
@@ -1294,11 +1210,11 @@ Net::LDAPapi - Perl5 Module Supporting LDAP API
   The following methods exist to obtain internal values within a
   Net::LDAPapi object:
 
-  o err - The last error-number returned by the LDAP library for this
+  o errno - The last error-number returned by the LDAP library for this
     connection.
-          ex:  print "Error Number: " . $ld->err . "\n";
+          ex:  print "Error Number: " . $ld->errno . "\n";
 
-  o errstring - The string equivalent of 'err'.
+  o errstring - The string equivalent of 'errno'.
           ex:  print "Error: " . $ld->errstring . "\n";
 
   o ld - Reference to the actual internal LDAP structure.  Only useful if
@@ -1363,12 +1279,15 @@ Net::LDAPapi - Perl5 Module Supporting LDAP API
 
 =head1 SETTING REBIND PROCESS
 
+  As of version 1.42, rebinding now works properly.
+
   The set_rebind_proc method is used to set a PERL function to supply DN,
   PASSWORD, and AUTHTYPE for use when the server rebinds (for referals,
   etc...).
 
   Usage should be something like:
-    $ld->set_rebind_proc(\&my_rebind_proc);
+    $rebind_ref = \&my_rebind_proc;
+    $ld->set_rebind_proc($rebind_ref);
 
   You can then create the procedure specified.  It should return 3 values.
 
@@ -1390,7 +1309,7 @@ Net::LDAPapi - Perl5 Module Supporting LDAP API
 
     $status = ldap_abandon($ld, $msgid);
 
-=item add ENTRYDN ATTRIBUTES
+=item add DN ATTR
 
   Begins an an asynchronous LDAP Add operation.  It returns a MSGID or -1
   upon completion.
@@ -1413,7 +1332,7 @@ Net::LDAPapi - Perl5 Module Supporting LDAP API
   Note that in most cases, you will need to be bound to the LDAP server
   as an administrator in order to add users.
 
-=item add_s ENTRYDN ATTRIBUTES
+=item add_s DN ATTR
 
   Synchronous version of the 'add' method.  Arguments are identical
   to the 'add' method, but this operation returns an LDAP STATUS,
@@ -1426,7 +1345,7 @@ Net::LDAPapi - Perl5 Module Supporting LDAP API
   See the section on creating the modify structure for more information
   on populating the ATTRIBUTES field for Add and Modify operations.
 
-=item bind DN CREDENTIALS METHOD
+=item bind DN PASSWORD TYPE
 
   Asynchronous method for binding to the LDAP server.  It returns a
   MSGID.
@@ -1437,7 +1356,7 @@ Net::LDAPapi - Perl5 Module Supporting LDAP API
     $msgid = $ld->bind("cn=Clayton Donley, o=Motorola, c=US", "abc123");
 
 
-=item bind_s DN CREDENTIALS METHOD
+=item bind_s DN PASSWORD TYPE
 
   Synchronous method for binding to the LDAP server.  It returns
   an LDAP STATUS. 
@@ -1448,20 +1367,20 @@ Net::LDAPapi - Perl5 Module Supporting LDAP API
     $status = $ld->bind_s("cn=Clayton Donley, o=Motorola, c=US", "abc123");
 
 
-=item compare ENTRYDN TYPE VALUE
+=item compare DN ATTR VALUE
 
   Asynchronous method for comparing a value with the value contained
-  within ENTRYDN.  Returns a MSGID.
+  within DN.  Returns a MSGID.
 
   Example:
 
     $msgid = $ld->compare("cn=Clayton Donley, o=Motorola, c=US", \
 		$type,$value);
 
-=item compare_s ENTRYDN TYPE VALUE
+=item compare_s DN ATTR VALUE
 
   Synchronous method for comparing a value with the value contained
-  within ENTRYDN.  Returns an LDAP STATUS.
+  within DN.  Returns an LDAP STATUS.
 
   Example:
 
@@ -1477,17 +1396,17 @@ Net::LDAPapi - Perl5 Module Supporting LDAP API
 
     $number = $ld->count_entries;
 
-=item delete ENTRYDN
+=item delete DN
 
-  Asynchronous method to delete ENTRYDN.  Returns a MSGID or -1 if error.
+  Asynchronous method to delete DN.  Returns a MSGID or -1 if error.
 
   Example:
 
     $msgid = $ld->delete("cn=Clayton Donley, o=Motorola, c=US");
 
-=item delete_s ENTRYDN
+=item delete_s DN
 
-  Synchronous method to delete ENTRYDN.  Returns an LDAP STATUS.
+  Synchronous method to delete DN.  Returns an LDAP STATUS.
 
   Example:
 
@@ -1567,7 +1486,7 @@ Net::LDAPapi - Perl5 Module Supporting LDAP API
 
     $dn = $ld->get_dn;
 
-=item get_values ATTRIBUTE
+=item get_values ATTR
 
   Obtain a list of all values associated with a given attribute.
   Returns an empty list if none are available.
@@ -1578,7 +1497,7 @@ Net::LDAPapi - Perl5 Module Supporting LDAP API
 
   This would put all the 'cn' values for $entry into the array @values.
 
-=item get_values_len SESSION ENTRY ATTRIBUTE
+=item get_values_len ATTR
 
   Retrieves a set of binary values for the specified attribute.
 
@@ -1589,6 +1508,14 @@ Net::LDAPapi - Perl5 Module Supporting LDAP API
   This would put all the 'jpegphoto' values for $entry into the array @values.
   These could then be written to a file, or further processed.
 
+=item is_ldap_url URL
+
+  Checks to see if a specified URL is a valid LDAP Url.  Returns 0 on false
+  and 1 on true.
+
+  Example:
+
+    $isurl = $ld->is_ldap_url("ldap://x500.my.org/o=Org,c=US");
 
 =item msgfree
 
@@ -1598,10 +1525,10 @@ Net::LDAPapi - Perl5 Module Supporting LDAP API
 
     $type = $ld->msgfree;
 
-=item modify ENTRYDN MODS
+=item modify DN MOD
 
-  Asynchronous method to modify an LDAP entry.  ENTRYDN is the DN to
-  modify and MODS contains a hash-table of attributes and values.  If
+  Asynchronous method to modify an LDAP entry.  DN is the DN to
+  modify and MOD contains a hash-table of attributes and values.  If
   multiple values need to be passed for a specific attribute, a
   reference to an array must be passed.
 
@@ -1625,19 +1552,19 @@ Net::LDAPapi - Perl5 Module Supporting LDAP API
   specified in @mail.  The "jpegphoto" attribute would be replaced with
   the binary data in $jpegphoto.
 
-=item modify_s ENTRYDN MODS
+=item modify_s DN MOD
 
   Synchronous version of modify method.  Returns an LDAP STATUS.  See the
-  modify method for notes and examples of populating the MODS
+  modify method for notes and examples of populating the MOD
   parameter.
 
   Example:
 
     $status = $ld->modify_s($entrydn,\%mods);
 
-=item modrdn2 ENTRYDN NEWRDN DELETEOLDRDN
+=item modrdn2 DN NEWRDN DELETE
 
-  Asynchronous method to change the name of an entry.  DELETEOLDRDN
+  Asynchronous method to change the name of an entry.  DELETE
   is non-zero if you wish to remove the attribute values from the
   old name.  Returns a MSGID.
 
@@ -1646,9 +1573,9 @@ Net::LDAPapi - Perl5 Module Supporting LDAP API
     $msgid = $ld->modrdn2("cn=Clayton Donley, o=Motorola, c=US", \
 		"cn=Clay Donley",0);
 
-=item modrdn2_s ENTRYDN NEWRDN DELETEOLDRDN
+=item modrdn2_s DN NEWRDN DELETE
 
-  Synchronous method to change the name of an entry.  DELETEOLDRDN is
+  Synchronous method to change the name of an entry.  DELETE is
   non-zero if you wish to remove the attribute values from the old
   name.  Returns an LDAP STATUS.
 
@@ -1675,7 +1602,7 @@ Net::LDAPapi - Perl5 Module Supporting LDAP API
 
     $entry = $ld->next_entry;
 
-=item perror STRING
+=item perror MSG
 
   If an error occurs while performing an LDAP function, this procedure
   will display it.  You can also use the err and errstring methods to
@@ -1770,13 +1697,68 @@ Net::LDAPapi - Perl5 Module Supporting LDAP API
     $status = $ld->search_st("o=Motorola, c=US",LDAP_SCOPE_SUBTREE, \
 		"(sn=Donley),[],0,3);
 
-=item unbind SESSION
+=item unbind
 
   Unbind LDAP connection with specified SESSION handler.
 
   Example:
 
     $ld->unbind;
+
+=item url_parse URL
+
+  Parses an LDAP URL into separate components.  Returns a HASH reference
+  with the following keys, if they exist in the URL:
+
+  host		- LDAP Host
+  port		- LDAP Port
+  dn    	- LDAP Base DN
+  attr		- LDAP Attributes to Return (ARRAY Reference)
+  filter	- LDAP Search Filter
+  scope		- LDAP Search Scope
+  options	- Netscape key specifying LDAP over SSL
+
+  Example:
+
+    $urlref = $ld->url_parse("ldap://ldap.my.org/o=My,c=US");
+
+=item url_search URL ATTRSONLY
+
+  Perform an asynchronous search using an LDAP URL.  URL is the LDAP
+  URL to search on.  ATTRSONLY determines whether we are returning
+  the values for each attribute (0) or only returning the attribute
+  names (1).  Results are retrieved and parsed identically to a call
+  to the search method.
+
+  Returns a non-negative MSGID upon success.
+
+  Example:
+
+    $msgid = $ld->url_search($my_ldap_url,0);
+
+=item url_search_s URL ATTRSONLY
+
+  Synchronous version of the url_search method.  Results are retrieved
+  and parsed identically to a call to the search_s method.
+
+  Returns LDAP_SUCCESS upon success.
+
+  Example:
+
+    $status = $ld->url_search_s($my_ldap_url,0);
+
+=item url_search_st URL ATTRSONLY TIMEOUT
+
+  Similar to the url_search_s method, except that it allows a timeout
+  to be specified.  The timeout is specified as seconds.  A timeout of
+  0 specifies an unlimited timeout.  Results are retrieved and parsed
+  identically to a call to the search_st method.
+
+  Returns LDAP_SUCCESS upon success.
+
+  Example:
+
+    $status = $ld->url_search_s($my_ldap_url,0,2);
 
 =head1 AUTHOR
 

@@ -49,9 +49,8 @@ if (($ld = new Net::LDAPapi($ldap_server)) == -1)
 
 if ($ld->bind_s != LDAP_SUCCESS)
 {
-   print "bind: " . $ld->errstring . "\n";
    $ld->unbind;
-   die;
+   die "bind: $ld->errstring";
 }
 
 #  This will set the size limit to $sizelimit from above.  The command
@@ -76,9 +75,8 @@ my $msgid = $ld->search($BASEDN,LDAP_SCOPE_SUBTREE,$filter,\@attrs,0);
 
 if ($msgid < 0)
 {
-   print "search: " . $ld->errstring . "\n";
    $ld->unbind;
-   die;
+   die "search: $ld->errstring";
 }
 
 # Reset Number of Entries Counter
@@ -101,9 +99,8 @@ while (($rc = $ld->result($msgid,0,$timeout)) == LDAP_RES_SEARCH_ENTRY)
 
    if (($dn = $ld->get_dn) eq "")
    {
-      print "get_dn: " . $ld->errstring . "\n";
       $ld->unbind;
-      die;
+      die "get_dn: $ld->errstring";
    }
 
 #
@@ -127,9 +124,8 @@ while (($rc = $ld->result($msgid,0,$timeout)) == LDAP_RES_SEARCH_ENTRY)
 if ($rc == LDAP_RES_SEARCH_RESULT &&
      $ld->err != LDAP_SUCCESS)
 {
-   print "result: " . $ld->errstring . "\n";
    $ld->unbind;
-   die;
+   die "result: $ld->errstring";
 }
 
 print "Found $nentries records\n";
