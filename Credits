@@ -1,0 +1,19 @@
+###############################################
+#  Net::LDAPapi - Credits List                #
+###############################################
+
+Special thanks to the following people
+for providing useful fixes and suggestions.
+
+Hallvard B. Furuseth <h.b.furuseth@usit.uio.no> (Various Fixes/Suggestions)
+Andreas Beck <beck@sdm.de> (part of code for ldap_get_all_entries routine)
+Douglas Gray Stephens <gray@austin.sar.slb.com> (Various)
+Al Grimstad <alg@att.com> (Helped in debugging lderrno/etc, Memory Leak Fixes)
+Christian Murphy <r28874@ismuc.sps.mot.com> (AIX Library Name Fix)
+
+
+--
+Clayton Donley
+donley@wwa.com
+http://www.wwa.com/~donley/
+CPAN: /authors/id/CDONLEY

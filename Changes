@@ -51,3 +51,48 @@ Revision history for Perl5 Net::LDAPapi Module.
 	- Implemented fixes from Hallvard Furuseth <h.b.furuseth@usit.uio.no>
 	  for ISODE support and lots of code cleanup, including a very nice
 	  script to autogenerate a constant.h file.  THANKS!
+
+1.35 Tue Aug 26 15:44:25 CDT 1997
+	- Added SSL Functions when using Netscape SDK
+	- Added the following functions for non-Netscape SDKs (and ensured
+	  that they now work properly for Netscape SDK users):
+		ldap_get_lderrno (to get errno from LDAP struct)
+		ldap_set_lderrno (to set errno from LDAP struct)
+		ldap_msgid       (to obtain msgid from an LDAPMessage *)
+		ldap_msgtype     (to obtain msgtype from an LDAPMessage *)
+		ldap_set_option  (to set some LDAP * options)
+		ldap_get_option  (to get some LDAP * options)
+	- Added support for a rebind process.  Mostly untested, so let me know
+	  how well this works for you.  You can set this to a PERL routine
+	  using ldap_set_rebind_proc($ld,\&perl_function_name), then make
+	  sure that this function returns DN, PASSWORD, and AUTHTYPE.
+	- Added more code and documentation fixes from Hallvard Furuseth
+	- Fixed documentation/code errors noted by Al Grimstad <alg@att.com>
+	- Added ldap_compat.h for non-Netscape SDK users.
+	- Added Credits file containing people who have provided feedback
+	  and fixes.
+	- Added Todo file containing list of things I'm working on (or
+	  would like to be working on).
+
+1.36 Fri Aug 29 14:54:38 CDT 1997
+	- Added ldap_get_all_entries, which is not a C API command, but
+	  useful anyway.  Thanks to Andreas Beck for some of the code to
+	  make this possible.
+	- Included a few new examples (ldapwalk2.pl and web500.pl)
+
+1.39 Mon Oct 27 15:33:12 CST 1997
+	- Added Al Grimstead's memory leak fix for ldap_get_all_entries.
+	- Added Windows NT 4.0 Support (using Perl5.004, not ActiveState Perl)
+	- Added finished web500.pl Gateway
+	- Improved memory handling in Add/Modify Routine
+	- Included updatepw.pl in the examples directory.  This is a script
+	  that can syncronize unix passwords into directories supporting
+	  crypted passwords.
+
+1.39a Tue Nov 25 16:37:35 CST 1997
+	- Version 1.39 "overimproved" memory handling.  It seemed to dump
+	  core, as it occasionally freed memory that Perl felt very inclined
+	  to freeing on its own.  Whoops!  This is only a bugfix release
+	  put out while I work on v1.40.
+	- In the process of debugging, also changed several scripts to run
+	  under 'use strict' and 'perl -w'.

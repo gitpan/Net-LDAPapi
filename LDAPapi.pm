@@ -25,6 +25,8 @@ require AutoLoader;
 	ldap_perror ldap_dn2ufn ldap_explode_dn ldap_explode_rdn
 	ldap_explode_dns ldap_first_attribute ldap_next_attribute
 	ldap_get_values ldap_get_values_len ldap_bind ldap_bind_s
+	ldapssl_client_init ldapssl_init ldapssl_install_routines
+	ldap_get_all_entries
 	LDAPS_PORT
 	LDAP_ADMIN_LIMIT_EXCEEDED
 	LDAP_AFFECTS_MULTIPLE_DSAS
@@ -41,11 +43,9 @@ require AutoLoader;
 	LDAP_AUTH_SIMPLE
 	LDAP_AUTH_UNKNOWN
 	LDAP_BUSY
-	LDAP_C
 	LDAP_CACHE_CHECK
 	LDAP_CACHE_LOCALDB
 	LDAP_CACHE_POPULATE
-	LDAP_CALL
 	LDAP_CALLBACK
 	LDAP_COMPARE_FALSE
 	LDAP_COMPARE_TRUE
@@ -103,7 +103,6 @@ require AutoLoader;
 	LDAP_OTHER
 	LDAP_PARAM_ERROR
 	LDAP_PARTIAL_RESULTS
-	LDAP_PASCAL
 	LDAP_PORT
 	LDAP_PORT_MAX
 	LDAP_PROTOCOL_ERROR
@@ -149,7 +148,7 @@ require AutoLoader;
 	LDAP_VERSION1
 	LDAP_VERSION2
 );
-$VERSION = '1.31';
+$VERSION = '1.39a';
 
 sub AUTOLOAD {
     # This AUTOLOAD is used to 'autoload' constants from the constant()
@@ -245,6 +244,68 @@ would be highly welcome.
 
   $status = ldap_modify_s($ld,$modify_dn,\%ldap_modifications);
 
+=head1 SPECIAL API FUNCTIONS
+
+=item GETTING/SETTING LDAP INTERNAL VALUES
+
+  In ISODE and UMICH versions of the LDAP C API, you would normally get
+  status information and set options within an LDAP structure.
+
+  In this PERL module, I have added calls normally available only in the
+  Netscape API.  These options are all documented later in this MAN page.
+
+     ldap_get_lderrno() - Get Recent Errors
+     ldap_set_lderrno() - Set Error Messages
+     ldap_get_option()  - Get Session Options
+     ldap_set_option()  - Set Session Options
+     ldap_msgid()       - Get MSGID from RESULT
+     ldap_msgtype()     - Get MSGTYPE from RESULT
+
+=item RETRIEVING ALL ENTRIES AS HASH OF HASHES
+
+  Another new call with v1.36 is ldap_get_all_entries().  This is not in the
+  C API, but is implemented in C within the module to allow an easy way to
+  populate a hash of hashes keyed by DN and ATTRIBUTE.
+
+  An example of using this call can be found in the ldapwalk2.pl example.
+
+=head1 SSL SUPPORT
+
+  When compiled with the Netscape SDK, this module now support Netscape's
+  SSL calls.  I do not have an SSL capable server, so this feature is
+  not tested yet.  The functions available are:
+
+     ldapssl_client_init($certdbpath,$certdbhandle)
+        - Initialize the secure parts (called only once)
+     $ld = ldapssl_init($host,$port,$defsecure)
+        - Initialize the LDAP library for SSL
+     ldapssl_install_routines($ld)
+        - Install I/O routines to make SSL over LDAP possible
+        - Use after ldap_init() or just call ldapssl_init() instead
+
+  I will add these to the main documentation section once they have been
+  tested and verified to work.
+
+=head1 SETTING REBIND PROCESS
+
+  As of v1.35, you can use 'ldap_set_rebind_proc()' to set a PERL function
+  to supply DN, PASSWORD, and AUTHTYPE for use when the server rebinds
+  (for referals, etc...).  This has not been tested much, as my environment
+  is pretty self-contained.
+
+  Usage should be something like:
+    ldap_set_rebind_proc($ld,\&my_rebind_proc);
+
+  You can then create the procedure specified.  It should return 3 values.
+
+  Example:
+    sub my_rebind_proc
+    {
+       return($dn,$pass,LDAP_AUTH_SIMPLE);
+    }
+
+  Once this has been better tested, I will add further information to
+  the supported API functions list.
 
 =head1 SUPPORTED API FUNCTIONS
 
@@ -457,11 +518,9 @@ would be highly welcome.
 
     $dn = ldap_get_dn($ld,$entry);
 
-=item ldap_getmsgid SESSION RESULT
+=item ldap_msgid SESSION RESULT
 
-  Extracts the MSGID from an LDAP result.  This is only available or
-  necessary in the Netscape SDK, as they use opaque LDAPMessage
-  structures.
+  Extracts the MSGID from an LDAP result.
 
   Example:
 
@@ -470,8 +529,6 @@ would be highly welcome.
 =item ldap_get_lderrno SESSION MATCHED MSG
 
   Returns information about the most recent LDAP error that occured.
-  This is only available or necessary in the Netscape SDK, as they
-  use opaque LDAP structures.
 
   If MATCHED is set to a scalar variable, it will be set to contain a
   string containing the DN matched by the last LDAP operation.
@@ -481,7 +538,6 @@ would be highly welcome.
 
   Examples:
 
-    $lderrno = ldap_get_lderrno($ld,"","");
     $lderrno = ldap_get_lderrno($ld,$err_dn,$err_msg);
 
 =item ldap_get_option SESSION OPTION OUT
@@ -497,9 +553,6 @@ would be highly welcome.
 
   Returns zero on success, non-zero otherwise.  OUT is set to the
   value of the OPTION.
-
-  This command is only available or necessary with the Netscape LDAP
-  SDK, as the LDAP session handle is an opaque structure in that API.
 
   Example:
 
@@ -524,7 +577,7 @@ would be highly welcome.
 
   Example:
 
-    @values = ldap_get_values($ld,$entry,"jpegphoto");
+    @values = ldap_get_values_len($ld,$entry,"jpegphoto");
 
   This would put all the 'jpegphoto' values for $entry into the array @values.
   These could then be written to a file, or further processed.
@@ -564,7 +617,7 @@ would be highly welcome.
     %mods = (
       "telephoneNumber", "",     #remove telephoneNumber
       "sn", "Test",              #set SN to TEST
-      "mail", ["me\@abc123.com","me\@second-home.cm"],  #set multivalue 'mail'
+      "mail", ["me\@abc123.com","me\@second-home.com"],  #set multivalue 'mail'
       "pager", {"a",["1234567"]},  #Add a Pager Value
       "jpegphoto", {"rb",[$jpegphoto]},  # Replace Binary jpegphoto
     );
@@ -654,7 +707,7 @@ would be highly welcome.
 =item ldap_result SESSION MSGID ALL TIMEOUT RESULT
 
   Retrieves the result of an operation initiated using an asynchronous
-  LDAP call.  Returns the type of result returned.
+  LDAP call.  Returns the type of result returned or -1 if error.
 
   MSGID is the MSGID returned by the Asynchronous LDAP call.  Set ALL to
   0 to receive entries as they arrive, or non-zero to receive all entries
@@ -718,25 +771,21 @@ would be highly welcome.
     $status = ldap_search_s($ld,"o=Motorola, c=US",LDAP_SCOPE_SUBTREE, \
 		"(sn=Donley)",\@attrs,0,$result);
 
-=item ldap_search_st SESSION BASE SCOPE FILTER ATTRS ATTRSONLY RESULT TIMEOUT
+=item ldap_search_st SESSION BASE SCOPE FILTER ATTRS ATTRSONLY TIMEOUT RESULT
 
   Performs a synchronous LDAP search with a TIMEOUT.  See ldap_search_s
   for a description of parameters.  Returns an LDAP STATUS.  Results are
   put into RESULTS.  TIMEOUT is a number of seconds to wait before giving
-  up.
+  up, or -1 for no timeout.
 
   Example:
 
-    @attrs = ();
-
     $status = ldap_search_st($ld,"o=Motorola, c=US",LDAP_SCOPE_SUBTREE, \
-		"(sn=Donley),\@attrs,0,$result,3);
+		"(sn=Donley),[],0,3,$result);
 
 =item ldap_set_option SESSION OPTION IN
 
-  Sets an LDAP option.  Only available or necessary with Netscape SDK, as
-  they use OPAQUE LDAP structure.  Only the following OPTIONs may be set
-  in PERL:
+  Sets an LDAP option.  Only the following OPTIONs may be set in PERL:
 		LDAP_OPT_DEREF
 		LDAP_OPT_SIZELIMIT
 		LDAP_OPT_TIMELIMIT
@@ -785,7 +834,7 @@ would be highly welcome.
 
   Example:
 
-    unbind($ld);
+    ldap_unbind($ld);
 
 =head1 AUTHOR
 

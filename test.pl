@@ -18,7 +18,7 @@ print "ok 1\n";
 ## Change these values for test to work...
 ##
 
-$BASEDN    = "o=Org, c=US";
+$BASEDN    = "o=Test, c=US";
 $filter    = "(cn=Manager)";
 $ldap_host = "";
 

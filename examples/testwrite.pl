@@ -1,4 +1,4 @@
-#!/usr/misc/bin/perl5
+#!/usr/bin/perl5 -w
 #
 #  testwrite.pl - Test of LDAP Modify Operations in Perl5
 #  Author:  Clayton Donley <donley@cig.mcel.mot.com>
@@ -6,24 +6,37 @@
 #  This utility is mostly to demonstrate all the write operations
 #  that can be done with LDAP through this PERL5 module.
 #
-#  It is not yet well documented, but you should easily be able to
-#  follow some of the code to understand what is happening, especially
-#  if you check the functions and examples in the man-page.
-#
 
 
-$ENTRYDN = "cn=Test User, o=Org, c=US";
-$ROOTDN = "cn=Manager, o=Org, c=US";
-$ROOTPW = "";
-$ldap_server = "localhost";
-
+use strict;
 use Net::LDAPapi;
 
-if (($ld = ldap_open($ldap_server,LDAP_PORT)) == NULL)
+
+# This is the entry we will be adding.  Do not use a pre-existing entry.
+my $ENTRYDN = "cn=Test User, o=Org, c=US";
+
+# This is the DN and password for an Administrator
+my $ROOTDN = "cn=admin, o=Org, c=US";
+my $ROOTPW = "";
+
+# Set this to your LDAP server.
+my $ldap_server = "localhost";
+
+# This will be the handle for your LDAP session.
+my $ld;
+
+
+#
+# Open connection to the LDAP server.
+#
+if (($ld = ldap_open($ldap_server,LDAP_PORT)) == 0)
 {
    die "Can't Initialize LDAP Connection."
 }
 
+#
+# Bind as the Administrator User
+#
 if ( ldap_simple_bind_s($ld,$ROOTDN,$ROOTPW) != LDAP_SUCCESS )
 {
    ldap_perror($ld,"ldap_simple_bind_s");
@@ -31,17 +44,20 @@ if ( ldap_simple_bind_s($ld,$ROOTDN,$ROOTPW) != LDAP_SUCCESS )
    die;
 }
 
-@phone = ("8888","1234","5555");
-@objectclass = ("person","organizationalPerson","inetOrgPerson");
-
-%testwrite = (
-	"cn", "Test User",
-	"sn", "User",
-	"mail", "abc123\@somewhere.com",
-	"telephoneNumber", \@phone,
-	"objectClass", \@objectclass,
+#
+# Define one LDAP Modification for Adding a user
+# 
+my %testwrite = (
+	"cn" => "Test User",
+	"sn" => "User",
+	"mail" => "abc123\@somewhere.com",
+	"telephoneNumber" => ["888888","111111"],
+	"objectClass" => ["person","organizationalPerson","inetOrgPerson"],
 );
 
+#
+# Perform ADD function on $ENTRYDN using the %testwrite Data
+#
 if (ldap_add_s($ld,$ENTRYDN,\%testwrite) != LDAP_SUCCESS)
 {
    ldap_perror($ld,"ldap_add_s");
@@ -52,32 +68,20 @@ print "Entry Added.\n";
 
 
 #
-#  You could simply uncomment these lines to read a jpeg file, then uncomment
-#  the jpegphoto line in %testmod to add it to the test entry.  The LDAP
-#  PERL module automatically calculates the size of the buffer, so no need
-#  to play with bervals structures in PERL or anything.
+# Recreate %testwrite to include an entry for modification
 #
-
-#open(TEST,"image.jpg");
-#while ($stuff = <TEST>)
-#{
-#   $jpegphoto = $jpegphoto . $stuff;
-#}
-#close(TEST);
-
-%testmod = (
+%testwrite = (
 #
 # Notice "a" for ADD
-#
-	"pager",{"a",["554","665"]},
-	"mail",["abc\@423.com","bca\@abb.gov"],
-	"labeleduri","http://www.cig.mcel.mot.com/",
-#
-# Notice "rb" for REPLACE BINARY
-#	"jpegPhoto",{"rb",[$jpegphoto]},
+	"pager" => {"a",["554","665"]},
+	"mail" => ["abc\@423.com","bca\@abb.gov"],
+	"labeleduri" => "http://www.abb.com/",
 );
 
-if (ldap_modify_s($ld,$ENTRYDN,\%testmod) != LDAP_SUCCESS)
+#
+# Perform Modify function on $ENTRYDN using %testwrite data
+#
+if (ldap_modify_s($ld,$ENTRYDN,\%testwrite) != LDAP_SUCCESS)
 {
    ldap_perror($ld,"ldap_modify_s");
    die;
@@ -85,6 +89,9 @@ if (ldap_modify_s($ld,$ENTRYDN,\%testmod) != LDAP_SUCCESS)
 
 print "Entry Modified.\n";
 
+#
+# Delete the entry for $ENTRYDN
+#
 if (ldap_delete_s($ld,$ENTRYDN) != LDAP_SUCCESS)
 {
    ldap_perror($ld,"ldap_delete_s");
@@ -93,5 +100,7 @@ if (ldap_delete_s($ld,$ENTRYDN) != LDAP_SUCCESS)
 
 print "Entry Deleted.\n";
 
+# Unbind to LDAP server
 ldap_unbind($ld);
+
 exit;

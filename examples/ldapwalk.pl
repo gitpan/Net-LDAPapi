@@ -15,12 +15,26 @@
 #  Example:  ldapwalk.pl "sn=Donley"
 #
 
+use strict;
 use Net::LDAPapi;
 
 #  Define these values
 
-$ldap_server = "localhost";
-$BASEDN = "o=Org, c=US";
+my $ldap_server = "localhost";
+my $BASEDN = "o=Org, c=US";
+my $sizelimit = 100;            # Set to Maximum Number of Entries to Return
+                                # Can set small to test error routines
+
+#  Various Variable Declarations...
+my $ld;
+my $dn;
+my $attr;
+my $ent;
+my $ber;
+my @vals;
+my %record = ();
+my $rc;
+my $result;
 
 #
 #  Initialize Connection to LDAP Server
@@ -39,28 +53,44 @@ if ((ldap_simple_bind_s($ld,"","")) != LDAP_SUCCESS)
    die;
 }
 
+#  This will set the size limit to $sizelimit from above.  The command
+#  is a Netscape addition, but I've programmed replacement versions for
+#  other APIs.
+ldap_set_option($ld,LDAP_OPT_SIZELIMIT,$sizelimit);
+
+#  This routine is COMPLETELY unnecessary in this application, since
+#  the rebind procedure at the end of this program simply rebinds as
+#  a NULL user.
+# ldap_set_rebind_proc($ld,&rebindproc);
+
 #
-#  Specify Attributes to Return, or @attrs = () for all
+#  Specify Search Filter and List of Attributes to Return
 
-@attrs = ("cn","jpegphoto");
-
-#
-#  Specify what to Search For
-
-$filter = $ARGV[0];
+my $filter = $ARGV[0];
+my @attrs = ();
 
 #
 #  Perform Search
+my $msgid = ldap_search($ld,$BASEDN,LDAP_SCOPE_SUBTREE,$filter,\@attrs,0);
 
-$msgid = ldap_search($ld,$BASEDN,LDAP_SCOPE_SUBTREE,$filter,\@attrs,0,);
-if ($msgid == -1)
+if ($msgid < 0)
 {
-   ldap_perror($ld,"ldap_search");
+#  ldap_get_lderrno is another Netscape routine that I've made available
+#   for other APIs, since we can't directly access the internals of the LDAP
+#   structure to get error codes.
+   my $blah1;
+   my $blah2;
+   my $err = ldap_get_lderrno($ld,$blah1,$blah2);
+   print &ldap_err2string($err),"\n";
+   ldap_unbind($ld);
+   die;
 }
 
-$nentries = 0;
+# Reset Number of Entries Counter
+my $nentries = 0;
 
-$timeout = -1;
+# Set no timeout.
+my $timeout = -1;
 
 #
 #  Cycle Through Entries
@@ -91,16 +121,21 @@ while (($rc = ldap_result($ld,$msgid,0,$timeout,$result)) == LDAP_RES_SEARCH_ENT
 #  data.
 #
       @vals = ldap_get_values_len($ld,$ent,$attr);
-      $record{$dn}{$attr} = [ @vals ];
+      $record{$dn}->{$attr} = [@vals];
    }
   }
   ldap_msgfree($result);
 
 }
-if ($rc == -1)
+if ($rc == LDAP_RES_SEARCH_RESULT)
 {
-   ldap_perror($ld,"ldap_result");
-   die;
+   my $err = ldap_result2error($ld,$result,0);
+   if ($err != LDAP_SUCCESS)
+   {
+      my $texterr = ldap_err2string($err);
+      print "Error: $texterr\n";
+      die;
+   }
 }
 
 print "Found $nentries records\n";
@@ -109,6 +144,7 @@ ldap_unbind($ld);
 
 foreach $dn (keys %record)
 {
+   my $item;
    print "dn: $dn\n";
    foreach $attr (keys %{$record{$dn}})
    {
@@ -133,4 +169,11 @@ foreach $dn (keys %record)
    }
 }
 
+exit;
+
+sub rebindproc
+{
+
+   return("","",LDAP_AUTH_SIMPLE);
+}
 

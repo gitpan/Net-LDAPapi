@@ -61,12 +61,9 @@ int arg;
        break;
 
     case 'C':
-       SYM(LDAP_C)
        SYM(LDAP_CACHE_CHECK)
        SYM(LDAP_CACHE_LOCALDB)
        SYM(LDAP_CACHE_POPULATE)
-       SYM(LDAP_CALL)
-       SYM(LDAP_CALLBACK)
        SYM(LDAP_COMPARE_FALSE)
        SYM(LDAP_COMPARE_TRUE)
        SYM(LDAP_CONNECT_ERROR)
@@ -150,7 +147,6 @@ int arg;
     case 'P':
        SYM(LDAP_PARAM_ERROR)
        SYM(LDAP_PARTIAL_RESULTS)
-       SYM(LDAP_PASCAL)
        SYM(LDAP_PORT)
        SYM(LDAP_PORT_MAX)
        SYM(LDAP_PROTOCOL_ERROR)
