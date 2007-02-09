@@ -1,56 +1,67 @@
-use ExtUtils::MakeMaker;
+use ExtUtils::MakeMaker qw(prompt WriteMakefile);
 use Config;
 
-
 print "\n\nNet::LDAPapi Perl5 Module - by Clayton Donley <donley\@cig.mcel.mot.com>\n\n";
+print "OpenLDAP support by Symas Corporation -- http://www.symas.com\n";
+print "Updated by Quanah Gibson-Mount to match modern products and vendors.\n";
 
-print "Enter How I Should Run Perl5 (ex. /usr/bin/perl, c:\\perl\\bin\\perl),\n";
-print " (default: $Config{'perlpath'})? ";
-$pl_path = <>;
-chop $pl_path;
-$pl_path = $Config{'perlpath'} unless $pl_path;
+$pl_path = $Config{'perlpath'};
 
+unless (@ARGV) {
+warn <<END;
+NOTICE: This module requires the OpenLDAP C API or Mozilla C SDK.
+        It will NOT work with ISODE or the UMich LDAP api.
+
+        Type perl Makefile.PL -h for command-line option summary.
+END
+}
+
+#############################################################################################
+# Build options passed in to script to support reproducible builds via Makefiles
+#############################################################################################
+use Getopt::Long;
+my $result = GetOptions("sdk=s"       => \$sdk,
+                        "lib_path=s"  => \$lib_ldap,
+                        "include_path=s" => \$include_ldap,
+               );
+unless ($result) {
+  print STDERR <<END;
+Usage: perl Makefile.PL [options]
+
+Configure Net::LDAPapi module.
+
+ Options:
+     -sdk          SDK   which SDK to use(openldap or mozilla)
+     -lib_path     path  path to the LDAP libraries
+     -include_path path  path to the LDAP includes
+
+If no options are passed on the command line will prompt for this
+value interactively.
+END
+}
+
+if ($sdk eq "mozilla" || $sdk eq "MOZILLA") {
+    $sdk = 2;
+}
+ 
 unless ($sdk)
 {
    print "\nSelect your Development Kit:\n";
-   print "  1.  Netscape (default)\n";
-   print "  2.  University of Michigan\n";
-   print "  3.  ISODE (compiled with LDAP)\n";
+   print "  1.  OpenLDAP (default)\n";
+   print "  2.  Mozilla\n";
    print "Choose: ";
    $sdk = <>;
 }
 
-$version = ($sdk == 2 ? 'UMICH' :
-	    $sdk == 3 ? 'ISODE' :
-	    'NETSCAPE');
-
-$lname = ($version eq 'ISODE' ? 'ISODE' : 'LDAP');
+$version = ($sdk == 2 ? 'MOZILLA' :
+	    'OPENLDAP');
 
 if ($include_ldap eq "")
 {
-   if ($version eq 'ISODE')
-   {
-      print "Location *above* isode/ Include Dir (default: /usr/include):  ";
-   } else {
-      print "Location of $lname Include Files (default: /usr/include):  ";
-   }
+   print "Location of $lname Include Files (default: /usr/include):  ";
    chomp($include_ldap = <>);
    $include_ldap = "/usr/include" unless $include_ldap =~ /\S/;
 }
-
-# Sigh... isode-8 has isode/ldap.h, isode IC has isode/ldap/ldap.h
-if (! -r "$include_ldap/ldap.h")
-{
-   for $ldapsubdir ("ldap","isode","isode/ldap")
-   {
-      if (-r "$include_ldap/$ldapsubdir/ldap.h")
-      {
-         $include_ldap .= "-I$include_ldap/$ldapsubdir";
-         last;
-      }
-   }
-}
-
 
 if ($lib_ldap eq "")
 {
@@ -60,43 +71,26 @@ if ($lib_ldap eq "")
    $lib_ldap = $df_lib unless $lib_ldap =~ /\S/;
 }
 
-if ($version eq "UMICH" && $kerblibs eq "")
+if ($version eq "MOZILLA")
 {
-   print "Using Kerberos for Authentication (default: n)? ";
-   $usekerb = <>;
-   if ($usekerb =~ /^y.*/i)
-   {
-      $kerblibs = "-lkrb -ldes";
-   }
-}
-
-
-if ($version eq "NETSCAPE")
-{
-   print "Using Netscape's NEW LDAPv3 Development Kit (default: n)? ";
-   $useldapv3 = <>;
-   if ($useldapv3 =~ /y.*/i)
-   {
       if ($Config::Config{'osname'} eq 'MSWin32')
       {
-         $ldap_lib = 'nsldapv30';
-      } elsif ($Config::Config{'osname'} eq 'aix')
-      {
-         $ldap_lib = 'ldapssl30_shr';
+         $ldap_lib = 'nsldapssl32v30';
       } else {
          $ldap_lib = 'ldapssl30';
       }
-   } else {
-      if ($Config::Config{'osname'} eq 'MSWin32')
-      {
-         $ldap_lib = 'nsldap32v11';
-      } elsif ($Config::Config{'osname'} eq 'aix')
-      {
-         $ldap_lib = 'ldap10_shr';
-      } else {
-         $ldap_lib = 'ldap10';
-      }
-   }
+}
+
+if ($version eq "OPENLDAP")
+{
+    if ($^O eq "MSWin32")
+    {
+	$ldap_libs = 'ldap.lib lber.lib';
+    }
+    else
+    {
+	$ldap_libs = '-lldap -llber';
+    }
 }
 
 sub MY::postamble
@@ -110,20 +104,13 @@ constant.h:     constant.gen
 WriteMakefile(
 	'NAME'          =>      'Net::LDAPapi',
 	'VERSION_FROM'  =>      'LDAPapi.pm',
-	($include_ldap ne "/usr/include" ? (
 	'INC'           =>      "-I$include_ldap",
-	) : (
-	'INC'		=>	"",
-	)),
-	($version eq "NETSCAPE" ? (
+	($version eq "MOZILLA" ? (
 	'LIBS'          =>      ["-L$lib_ldap -l$ldap_lib"],
-	'DEFINE'        =>      '-DNETSCAPE_LDAP',
-	) : $version eq "ISODE" ? (
-	'LIBS'          =>      ["-L$lib_ldap -lldap -llber -lisode"],
-	'DEFINE'        =>      '-DISODE_LDAP',
+	'DEFINE'        =>      '-DMOZILLA_LDAP',
 	) : (
-	'LIBS'          =>      ["-L$lib_ldap -lldap -llber $kerblibs"],
-	'DEFINE'        =>      '-Dbool=char -DHAS_BOOL',
+	'LIBS'          =>      ["-L$lib_ldap"],
+	'DEFINE'        =>      '-DOPENLDAP',
 	)),
 	'depend'        =>      { 'LDAPapi.c' => 'constant.h' },
 	'clean'         =>      { 'FILES'     => 'constant.h' },

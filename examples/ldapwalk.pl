@@ -44,13 +44,18 @@ if (($ld = new Net::LDAPapi($ldap_server)) == -1)
    die "Connection Failed!";
 }
 
+#ldap_set_option(0,LDAP_OPT_DEBUG_LEVEL,-1);
+
 #
 #  Bind as NULL User to LDAP connection $ld
 
+#$ld->sasl_parms(-mech=>"CRAM-MD5",-flags=>LDAP_SASL_AUTOMATIC);
+
+#if ($ld->bind_s("tester","tester",LDAP_AUTH_SASL) != LDAP_SUCCESS)
 if ($ld->bind_s != LDAP_SUCCESS)
 {
    $ld->unbind;
-   die "bind: $ld->errstring";
+   die "bind: ", $ld->errstring, ": ", $ld->extramsg;
 }
 
 #  This will set the size limit to $sizelimit from above.  The command
@@ -61,7 +66,7 @@ $ld->set_option(LDAP_OPT_SIZELIMIT,$sizelimit);
 #  This routine is COMPLETELY unnecessary in this application, since
 #  the rebind procedure at the end of this program simply rebinds as
 #  a NULL user.
-$ld->set_rebind_proc(&rebindproc);
+#$ld->set_rebind_proc(&rebindproc);
 
 #
 #  Specify Search Filter and List of Attributes to Return
@@ -76,7 +81,7 @@ my $msgid = $ld->search($BASEDN,LDAP_SCOPE_SUBTREE,$filter,\@attrs,0);
 if ($msgid < 0)
 {
    $ld->unbind;
-   die "search: $ld->errstring";
+   die "search: ", $ld->errstring, ": ", $ld->extramsg;
 }
 
 # Reset Number of Entries Counter
@@ -100,7 +105,7 @@ while (($rc = $ld->result($msgid,0,$timeout)) == LDAP_RES_SEARCH_ENTRY)
    if (($dn = $ld->get_dn) eq "")
    {
       $ld->unbind;
-      die "get_dn: $ld->errstring";
+      die "get_dn: ", $ld->errstring, ": ", $ld->extramsg;
    }
 
 #
@@ -125,7 +130,7 @@ if ($rc == LDAP_RES_SEARCH_RESULT &&
      $ld->err != LDAP_SUCCESS)
 {
    $ld->unbind;
-   die "result: $ld->errstring";
+   die "result: ", $ld->errstring, ": ", $ld->extramsg;
 }
 
 print "Found $nentries records\n";

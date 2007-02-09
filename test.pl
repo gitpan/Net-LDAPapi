@@ -7,10 +7,10 @@
 # (It may become useful if the test is moved to ./t subdirectory.)
 
 BEGIN { $| = 1; print "1..8\n"; }
-END {print "not ok 1\n" unless $loaded;}
+END {print "modinit  - not ok\n" unless $loaded;}
 use Net::LDAPapi;
 $loaded = 1;
-print "ok 1\n";
+print "modinit  - ok\n";
 
 ######################### End of black magic.
 
@@ -18,9 +18,15 @@ print "ok 1\n";
 ## Change these values for test to work...
 ##
 
-$BASEDN    = "o=Org,c=US";
-$filter    = "(objectclass=*)";
-$ldap_host = "";
+print "\nEnter LDAP Server: ";
+chomp($ldap_host = <>);
+print "Enter port: ";
+chomp($ldap_port = <>);
+print "Enter Search Filter (ex. uid=abc123): ";
+chomp($filter = <>);
+print "Enter LDAP Search Base (ex. o=Org, c=US): ";
+chomp($BASEDN = <>);
+print "\n";
 
 if (!$ldap_host)
 {
@@ -31,12 +37,12 @@ if (!$ldap_host)
 ##  Initialize LDAP Connection
 ##
 
-if (($ld = new Net::LDAPapi(-host=>$ldap_host)) == -1)
+if (($ld = new Net::LDAPapi(-host=>$ldap_host,-port=>$ldap_port)) == -1)
 {
-   print "not ok 2\n";
+   print "open     - not ok\n";
    exit -1; 
 }
-print "ok 2\n";
+print "open     - ok\n";
 
 ##
 ##  Bind as DN, PASSWORD (NULL,NULL) on LDAP connection $ld
@@ -45,23 +51,23 @@ print "ok 2\n";
 if ($ld->bind_s != LDAP_SUCCESS)
 {
    $ld->perror("bind_s");
-   print "not ok 3\n";
+   print "bind     - not ok\n";
    exit -1;
 }
-print "ok 3\n";
+print "bind     - ok\n";
 
 ##
 ## ldap_search_s - Synchronous Search
 ##
 
-@attrs = ("mail");
+@attrs = ();
 
 if ($ld->search_s($BASEDN,LDAP_SCOPE_SUBTREE,$filter,\@attrs,0) != LDAP_SUCCESS)
 {
    $ld->perror("search_s");
-   print  "not ok 4\n";
+   print  "search   - not ok\n";
 }
-print "ok 4\n";
+print "search   - ok\n";
 
 ##
 ## ldap_count_entries - Count Matched Entries
@@ -70,9 +76,9 @@ print "ok 4\n";
 if ($ld->count_entries == -1)
 {
    ldap_perror($ld,"count_entry");
-   print "not ok 5\n";
+   print "count    - not ok\n";
 }
-print "ok 5\n";
+print "count    - ok\n";
 
 ##
 ## first_entry - Get First Matched Entry
@@ -86,17 +92,17 @@ print "ok 5\n";
 ## ldap_get_dn  -  Get DN for Matched Entries
 ##
 
-      if ($ld->get_dn ne "" )
+      if ($ld->get_dn ne "")
       {
-         print "ok 6\n";
+         print "getdn    - ok\n";
       } else {
          $ld->perror("get_dn");
-         print "not ok 6\n";
+         print "getdn    - not ok\n";
       }
 
       if (($attr = $ld->first_attribute) ne "")
       {
-         print "ok 7\n";
+         print "firstatt - ok\n";
 
 ##
 ## ldap_get_values
@@ -105,12 +111,12 @@ print "ok 5\n";
          @vals = $ld->get_values($attr);
          if ($#vals >= 0)
          {
-            print "ok 8\n";
+            print "getvals  - ok\n";
          } else {
-            print "not ok 8\n";
+            print "getvals  - not ok\n";
          }
       } else {
-         print "not ok 7\n";
+         print "firstattr - not ok\n";
       }
 
 

@@ -4,7 +4,7 @@
 #
 # Author: Andrew J Cosgriff <ajc@bing.wattle.id.au>
 # Created: Thu Dec  4 19:48:03 1997
-# Version: $Id: ldap_mod_attr,v 1.11 1998/01/24 08:37:21 ajc Exp $
+# Version: $Id: ldap_mod_attr.pl,v 1.1.1.1 1998/01/30 19:10:06 jonl Exp $
 # Keywords: ldap modify add remove attribute commmand-line useful really
 #
 ########################################
@@ -25,7 +25,7 @@
 use Net::LDAPapi;
 use Getopt::Std;
 use File::Basename;
-my $version = substr q$Revision: 1.11 $, 10;
+my $version = substr q$Revision: 1.1.1.1 $, 10;
 chop $version;
 ##########
 #

@@ -1,3 +1,6 @@
+/* This file was modified by Howard Chu, hyc@symas.com, 2000-2003.
+ * Most changes are #if OPENLDAP, some are not marked.
+ */
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -11,18 +14,17 @@ extern "C" {
 #include <lber.h>
 #include <ldap.h>
 
-/* Netscape prototypes declare things as "const char *" while   */
-/*      UM-LDAP uses "char *"                                   */
+/* Mozilla prototypes declare things as "const char *" while   */
+/*      OpenLDAP uses "char *"                                 */
 
-#ifdef NETSCAPE_LDAP
+#ifdef MOZILLA_LDAP
  #define LDAP_CHAR const char
  #include <ldap_ssl.h>
 #else
+#ifndef OPENLDAP
  #include "ldap_compat.h"
+#endif
  #define LDAP_CHAR char
- #if defined(ISODE_LDAP) && !defined(IC_LDAP_CONFIG_H)
- # define ISODE8_LDAP
- #endif
 #endif
 
 
@@ -30,10 +32,10 @@ extern "C" {
 
 static char **av2modvals(AV *ldap_value_array_av, int ldap_isa_ber);
 static LDAPMod *parse1mod(SV *ldap_value_ref,char *ldap_current_attribute,
-	int ldap_add_func);
+	int ldap_add_func,int cont);
 static LDAPMod **hash2mod(SV *ldap_change,int ldap_add_func, const char *func);
 
-#ifdef NETSCAPE_LDAP
+#ifdef MOZILLA_LDAP
    static int internal_rebind_proc(LDAP *ld, char **dnp, char **pwp,
 	   int *authmethodp, int freeit, void *arg);
    static int LDAP_CALL ns_internal_rebind_proc(LDAP *ld, char **dnp,
@@ -51,17 +53,21 @@ static LDAPMod **hash2mod(SV *ldap_change,int ldap_add_func, const char *func);
 SV *ldap_perl_rebindproc = NULL;
 
 
-/* ISODE8 doesn't include the ldap_mods_free function */
-
-#ifdef ISODE8_LDAP
-   #define ldap_mods_free(x,y) Safefree(x);
-#endif
-
-
 /* Use constant.h generated from constant.gen */
 /* Courtesy of h.b.furuseth@usit.uio.no       */
 
 #include "constant.h"
+
+/* Strcasecmp - Some operating systems don't have this, including NT */
+
+int StrCaseCmp(const char *s, const char *t)
+{
+   while (*s && *t && toupper(*s) == toupper(*t))
+   {
+      s++; t++;
+   }
+   return(toupper(*s) - toupper(*t));
+}
 
 /* av2modvals - Takes a single Array Reference (AV *) and returns */
 /*    a null terminated list of char pointers.                    */
@@ -92,7 +98,7 @@ char **av2modvals(AV *ldap_value_array_av, int ldap_isa_ber)
 	ldap_value_count++)
    {
       ldap_current_value_sv = av_fetch(ldap_value_array_av,ldap_value_count,0);
-      ldap_current_value_char = SvPV(*ldap_current_value_sv,na);
+      ldap_current_value_char = SvPV(*ldap_current_value_sv,PL_na);
       ldap_pvlen = SvCUR(*ldap_current_value_sv);
       if (strcmp(ldap_current_value_char,"") != 0)
       {
@@ -125,10 +131,10 @@ char **av2modvals(AV *ldap_value_array_av, int ldap_isa_ber)
 
 static
 LDAPMod *parse1mod(SV *ldap_value_ref,char *ldap_current_attribute,
-   int ldap_add_func)
+   int ldap_add_func,int cont)
 {
    LDAPMod *ldap_current_mod;
-   HV *ldap_current_values_hv;
+   static HV *ldap_current_values_hv;
    HE *ldap_change_element;
    char *ldap_current_modop;
    SV *ldap_current_value_sv;
@@ -143,8 +149,11 @@ LDAPMod *parse1mod(SV *ldap_value_ref,char *ldap_current_attribute,
    {
      if (SvTYPE(SvRV(ldap_value_ref)) == SVt_PVHV)
      {
-      ldap_current_values_hv = (HV *) SvRV(ldap_value_ref);
-      hv_iterinit(ldap_current_values_hv);
+      if (!cont)
+      {
+         ldap_current_values_hv = (HV *) SvRV(ldap_value_ref);
+         hv_iterinit(ldap_current_values_hv);
+      }
       if ((ldap_change_element = hv_iternext(ldap_current_values_hv)) == NULL)
 	 return(NULL);
       ldap_current_modop = hv_iterkey(ldap_change_element,&keylen);
@@ -183,6 +192,8 @@ LDAPMod *parse1mod(SV *ldap_value_ref,char *ldap_current_attribute,
 	 }
       }
      } else if (SvTYPE(SvRV(ldap_value_ref)) == SVt_PVAV) {
+      if (cont)
+         return NULL;
       if (ldap_add_func == 1)
          ldap_current_mod->mod_op = 0;
       else
@@ -194,7 +205,9 @@ LDAPMod *parse1mod(SV *ldap_value_ref,char *ldap_current_attribute,
       }
      }
    } else {
-      if (strcmp(SvPV(ldap_value_ref,na),"") == 0)
+      if (cont)
+         return NULL;
+      if (strcmp(SvPV(ldap_value_ref,PL_na),"") == 0)
       {
          if (ldap_add_func != 1)
          {
@@ -211,7 +224,7 @@ LDAPMod *parse1mod(SV *ldap_value_ref,char *ldap_current_attribute,
 	    ldap_current_mod->mod_op = LDAP_MOD_REPLACE;
          }
          New(1,ldap_current_mod->mod_values,2,char *);
-	 ldap_current_mod->mod_values[0] = SvPV(ldap_value_ref,na);
+	 ldap_current_mod->mod_values[0] = SvPV(ldap_value_ref,PL_na);
 	 ldap_current_mod->mod_values[1] = NULL;
       }
    }
@@ -246,8 +259,8 @@ LDAPMod ** hash2mod(SV *ldap_change_ref,int ldap_add_func,const char *func)
       ldap_current_attribute = hv_iterkey(ldap_change_element,&keylen);
       ldap_current_value_sv = hv_iterval(ldap_change,ldap_change_element);
       ldap_current_mod = parse1mod(ldap_current_value_sv,
-	ldap_current_attribute,ldap_add_func);
-      if (ldap_current_mod != NULL)
+	ldap_current_attribute,ldap_add_func,0);
+      while (ldap_current_mod != NULL)
       {
          ldap_attribute_count++;
          (ldapmod
@@ -256,19 +269,20 @@ LDAPMod ** hash2mod(SV *ldap_change_ref,int ldap_add_func,const char *func)
          New(1,ldapmod[ldap_attribute_count -1],sizeof(LDAPMod),LDAPMod);
          Copy(ldap_current_mod,ldapmod[ldap_attribute_count-1],
 	   sizeof(LDAPMod),LDAPMod *);
+         ldap_current_mod = parse1mod(ldap_current_value_sv,
+           ldap_current_attribute,ldap_add_func,1);
+
       }
    }
-/*   if (!ldapmod)
-      ldapmod = New(1,ldapmod,1,LDAPMod *); */
    ldapmod[ldap_attribute_count] = NULL;
    return ldapmod;
 }
 
-/* internal_rebind_proc - Wrapper to call a PERL rebind process             */
-/*   ldap_set_rebind_proc is slightly different between Netscape and UMICH  */
+/* internal_rebind_proc - Wrapper to call a PERL rebind process               */
+/*   ldap_set_rebind_proc is slightly different between Mozilla and OpenLDAP  */
 
 int
-#ifdef NETSCAPE_LDAP
+#ifdef MOZILLA_LDAP
 internal_rebind_proc(LDAP *ld, char **dnp, char **pwp, int *authmethodp,
   int freeit, void *arg)
 #else
@@ -310,6 +324,53 @@ internal_rebind_proc(LDAP *ld, char **dnp, char **pwp, int *authmethodp,
    return(LDAP_SUCCESS);
 }
 
+#ifdef OPENLDAP
+
+#include "sasl/sasl.h"
+
+typedef struct bictx {
+	char *authcid;
+	char *passwd;
+	char *realm;
+	char *authzid;
+} bictx;
+
+static int
+ldap_b2_interact(LDAP *ld, unsigned flags, void *def, void *inter)
+{
+	sasl_interact_t *in = inter;
+	const char *p;
+	bictx *ctx = def;
+
+	for (;in->id != SASL_CB_LIST_END;in++)
+	{
+		p = NULL;
+		switch(in->id)
+		{
+			case SASL_CB_GETREALM:
+				p = ctx->realm;
+				break;
+			case SASL_CB_AUTHNAME:
+				p = ctx->authcid;
+				break;
+			case SASL_CB_USER:
+				p = ctx->authzid;
+				break;
+			case SASL_CB_PASS:
+				p = ctx->passwd;
+				break;
+		}
+		if (p)
+		{
+			in->len = strlen(p);
+			in->result = p;
+		}
+	}
+	return LDAP_SUCCESS;
+}
+
+#endif
+
 
 MODULE = Net::LDAPapi           PACKAGE = Net::LDAPapi
 
@@ -332,18 +393,30 @@ ldap_init(defhost,defport)
 	int             defport
 	CODE:
 	{
-#ifdef ISODE8_LDAP
-	   warn("ldap_init() not provided with isode-8 ldap.");
-	   errno = EINVAL;
-	   RETVAL = NULL;
-#else
 	   RETVAL = ldap_init(defhost, defport);
-#endif
 	}
 	OUTPUT:
 	RETVAL
 
-#ifdef NETSCAPE_LDAP
+
+#ifdef OPENLDAP
+
+int
+ldap_initialize(ld,url)
+	LDAP *		ld = NO_INIT
+	LDAP_CHAR *	url
+	CODE:
+	{
+	   RETVAL = ldap_initialize(&ld, url);
+	}
+	OUTPUT:
+	RETVAL
+	ld
+
+#endif
+
+
+#if defined(MOZILLA_LDAP) || defined(OPENLDAP)
 
 int
 ldap_set_option(ld,option,optdata)
@@ -428,7 +501,7 @@ int
 ldap_unbind_s(ld)
 	LDAP *          ld
 
-#ifdef NETSCAPE_LDAP
+#ifdef MOZILLA_LDAP
 
 int
 ldap_version(ver)
@@ -454,7 +527,8 @@ ldap_add_s(ld,dn,ldap_change_ref)
 	LDAP *          ld
 	LDAP_CHAR *     dn
 	LDAPMod **	ldap_change_ref = hash2mod($arg, 1, "$func_name");
-##	CLEANUP:
+	CLEANUP:
+	   Safefree(ldap_change_ref);
 ##	   ldap_mods_free(ldap_change_ref,0);
 
 int
@@ -575,7 +649,7 @@ ldap_search(ld,base,scope,filter,attrs,attrsonly)
 	      for (count=0;count <= arraylen; count++)
 	      {
 		 current = av_fetch((AV *)SvRV(attrs),count,0);
-		 attrs_char[count] = SvPV(*current,na);
+		 attrs_char[count] = SvPV(*current,PL_na);
 	      }
 	      attrs_char[arraylen+1] = NULL;
 	   }
@@ -611,7 +685,7 @@ ldap_search_s(ld,base,scope,filter,attrs,attrsonly,res)
 		 for (count=0;count <= arraylen; count++)
 		 {
 		    current = av_fetch((AV *)SvRV(attrs),count,0);
-		    attrs_char[count] = SvPV(*current,na);
+		    attrs_char[count] = SvPV(*current,PL_na);
 		 }
 		 attrs_char[arraylen+1] = NULL;
 	      }
@@ -657,7 +731,7 @@ ldap_search_st(ld,base,scope,filter,attrs,attrsonly,timeout,res)
 	      for (count=0;count <= arraylen; count++)
 	      {
 		 current = av_fetch((AV *)SvRV(attrs),count,0);
-		 attrs_char[count] = SvPV(*current,na);
+		 attrs_char[count] = SvPV(*current,PL_na);
 	      }
 	      attrs_char[arraylen+1] = NULL;
 	   }
@@ -706,7 +780,7 @@ ber_free(ber,freebuf)
 	BerElement *ber
 	int freebuf
 
-#ifdef NETSCAPE_LDAP
+#if defined(MOZILLA_LDAP) || defined(OPENLDAP)
 
 int
 ldap_msgid(lm)
@@ -715,6 +789,32 @@ ldap_msgid(lm)
 int
 ldap_msgtype(lm)
 	LDAPMessage *   lm
+
+#else
+
+int
+ldap_msgid(lm)
+	LDAPMessage *   lm
+	CODE:
+	{
+	   RETVAL = lm->lm_msgid;
+	}
+	OUTPUT:
+	RETVAL
+
+int
+ldap_msgtype(lm)
+	LDAPMessage *   lm
+	CODE:
+	{
+	   RETVAL = lm->lm_msgtype;
+	}
+	OUTPUT:
+	RETVAL
+
+#endif
+
+#if defined(MOZILLA_LDAP)
 
 int
 ldap_get_lderrno(ld,m,s)
@@ -740,35 +840,21 @@ ldap_set_lderrno(ld,e,m,s)
 #else
 
 int
-ldap_msgid(lm)
-	LDAPMessage *   lm
-	CODE:
-	{
-	   RETVAL = lm->lm_msgid;
-	}
-	OUTPUT:
-	RETVAL
-
-int
-ldap_msgtype(lm)
-	LDAPMessage *   lm
-	CODE:
-	{
-	   RETVAL = lm->lm_msgtype;
-	}
-	OUTPUT:
-	RETVAL
-
-int
 ldap_get_lderrno(ld,m,s)
 	LDAP *          ld
 	char *          m = NO_INIT
 	char *          s = NO_INIT
 	CODE:
 	{
+#ifdef OPENLDAP
+	   ldap_get_option(ld, LDAP_OPT_ERROR_NUMBER, &RETVAL);
+	   ldap_get_option(ld, LDAP_OPT_ERROR_STRING, &s);
+	   ldap_get_option(ld, LDAP_OPT_MATCHED_DN, &m);
+#else
 	   RETVAL = ld->ld_errno;
 	   m = ld->ld_matched;
 	   s = ld->ld_error;
+#endif
 	}
 	OUTPUT:
 	RETVAL
@@ -784,9 +870,15 @@ ldap_set_lderrno(ld,e,m,s)
 	CODE:
 	{
 	   RETVAL = 0;
+#ifdef OPENLDAP
+	   ldap_set_option(ld, LDAP_OPT_ERROR_NUMBER, &e);
+	   ldap_set_option(ld, LDAP_OPT_ERROR_STRING, s);
+	   ldap_set_option(ld, LDAP_OPT_MATCHED_DN, m);
+#else
 	   ld->ld_errno = e;
 	   ld->ld_matched = m;
 	   ld->ld_error = s;
+#endif
 	}
 	OUTPUT:
 	RETVAL
@@ -818,7 +910,7 @@ ldap_next_entry(ld,preventry)
 	LDAP *          ld
 	LDAPMessage *   preventry
 
-char *
+SV *
 ldap_get_dn(ld,entry)
 	LDAP *          ld
 	LDAPMessage *   entry
@@ -827,7 +919,13 @@ ldap_get_dn(ld,entry)
 	CODE:
 	{
 	   dn = ldap_get_dn(ld, entry);
-	   RETVAL = dn;
+	   if (dn)
+	   {
+	      RETVAL = newSVpv(dn,0);
+	      ldap_memfree(dn);
+	   } else {
+	      RETVAL = &PL_sv_undef;
+	   }
 	}
 	OUTPUT:
 	RETVAL
@@ -842,7 +940,7 @@ char *
 ldap_dn2ufn(dn)
 	LDAP_CHAR *     dn
 
-#ifdef NETSCAPE_LDAP
+#if defined(MOZILLA_LDAP) || defined(OPENLDAP)
 
 void
 ldap_explode_dn(dn,notypes)
@@ -884,6 +982,8 @@ ldap_explode_rdn(dn,notypes)
 	   }
 	}
 
+#ifdef MOZILLA_LDAP
+
 void
 ldap_explode_dns(dn)
 	char *          dn
@@ -904,28 +1004,47 @@ ldap_explode_dns(dn)
 	}
 
 #endif
+#endif
 
-char *
+SV *
 ldap_first_attribute(ld,entry,ber)
 	LDAP *          ld
 	LDAPMessage *   entry
 	BerElement *    ber = NO_INIT
+	PREINIT:
+	   char * attr;
 	CODE:
 	{
-	   RETVAL = ldap_first_attribute(ld,entry,&ber);
+	   attr = ldap_first_attribute(ld,entry,&ber);
+	   if (attr)
+	   {
+	      RETVAL = newSVpv(attr,0);
+	      ldap_memfree(attr);
+	   } else {
+	      RETVAL = &PL_sv_undef;
+	   }
 	}
 	OUTPUT:
 	RETVAL
 	ber
 
-char *
+SV *
 ldap_next_attribute(ld,entry,ber)
 	LDAP *          ld
 	LDAPMessage *   entry
 	BerElement *    ber
+	PREINIT:
+	   char * attr;
 	CODE:
 	{
-	   RETVAL = ldap_next_attribute(ld,entry,ber);
+	   attr = ldap_next_attribute(ld,entry,ber);
+	   if (attr)
+	   {
+	      RETVAL = newSVpv(attr,0);
+	      ldap_memfree(attr);
+	   } else {
+	      RETVAL = &PL_sv_undef;
+	   }
 	}
 	OUTPUT:
 	RETVAL
@@ -973,7 +1092,7 @@ ldap_get_values_len(ld,entry,attr)
 	   }
 	}
 
-#ifdef NETSCAPE_LDAP
+#ifdef MOZILLA_LDAP
 
 int
 ldapssl_client_init(certdbpath,certdbhandle)
@@ -993,14 +1112,15 @@ ldapssl_install_routines(ld)
 #endif
 
 void
-ldap_set_rebind_proc(ld,rebind_function)
+ldap_set_rebind_proc(ld,rebind_function,args)
 	LDAP *          ld
 	SV *            rebind_function
+	void *		args
 	CODE:
 	{
 	   if (SvTYPE(SvRV(rebind_function)) != SVt_PVCV)
 	   {
-#ifdef NETSCAPE_LDAP
+#if defined(MOZILLA_LDAP) || defined(OPENLDAP)
 	      ldap_set_rebind_proc(ld,NULL,NULL);
 #else
 	      ldap_set_rebind_proc(ld,NULL);
@@ -1010,10 +1130,10 @@ ldap_set_rebind_proc(ld,rebind_function)
 	         ldap_perl_rebindproc = newSVsv(rebind_function);
 	      else
 	         SvSetSV(ldap_perl_rebindproc,rebind_function);
-#ifdef NETSCAPE_LDAP
-	      ldap_set_rebind_proc(ld,ns_internal_rebind_proc,NULL);
+#if defined(MOZILLA_LDAP)
+	      ldap_set_rebind_proc(ld,ns_internal_rebind_proc,args);
 #else
-	      ldap_set_rebind_proc(ld,internal_rebind_proc);
+	      ldap_set_rebind_proc(ld,internal_rebind_proc, args);
 #endif
 	   }
 	}
@@ -1064,7 +1184,7 @@ ldap_get_all_entries(ld,result)
 	      hv_store(FullHash, dn, strlen(dn), HashRef, 0);
 	      if (dn != NULL)
 	         ldap_memfree(dn);
-#ifdef NETSCAPE_LDAP
+#if defined(MOZILLA_LDAP) || defined(OPENLDAP)
 	      if (ber != NULL)
 	         ber_free(ber,0);
 #endif
@@ -1098,9 +1218,16 @@ ldap_url_parse(url)
 	      static char *attr_key = "attr";
 	      static char *scope_key = "scope";
 	      static char *filter_key = "filter";
-#ifdef NETSCAPE_LDAP
+#ifdef MOZILLA_LDAP
 	      static char *options_key = "options";
 	      SV* options = newSViv(realcomp->lud_options);
+#endif
+#ifdef OPENLDAP
+	      static char *scheme_key = "scheme";
+	      static char *exts_key = "exts";
+	      AV* extsarray = newAV();
+	      SV* extsibref = newRV((SV*) extsarray);
+	      SV* scheme = newSVpv(realcomp->lud_scheme,0);
 #endif
 	      SV* host = newSVpv(realcomp->lud_host,0);
 	      SV* port = newSViv(realcomp->lud_port);
@@ -1123,22 +1250,36 @@ ldap_url_parse(url)
 	            av_push(attrarray, SVval);
 	         }
 	      }
+#ifdef OPENLDAP
+	      if (realcomp->lud_exts != NULL)
+	      {
+	         for (count=0; realcomp->lud_exts[count] != NULL; count++)
+	         {
+	            SV* SVval = newSVpv(realcomp->lud_exts[count],0);
+	            av_push(extsarray, SVval);
+	         }
+	      }
+	      hv_store(FullHash,exts_key,strlen(exts_key),extsibref,0);
+	      hv_store(FullHash,scheme_key,strlen(scheme_key),scheme,0);
+#endif
 	      hv_store(FullHash,host_key,strlen(host_key),host,0);
 	      hv_store(FullHash,port_key,strlen(port_key),port,0);
 	      hv_store(FullHash,dn_key,strlen(dn_key),dn,0);
 	      hv_store(FullHash,attr_key,strlen(attr_key),attribref,0);
 	      hv_store(FullHash,scope_key,strlen(scope_key),scope,0);
 	      hv_store(FullHash,filter_key,strlen(filter_key),filter,0);
-#ifdef NETSCAPE_LDAP
+#ifdef MOZILLA_LDAP
 	      hv_store(FullHash,options_key,strlen(options_key),options,0);
 #endif
 	      ldap_free_urldesc(realcomp);
 	   } else {
-	      RETVAL = &sv_undef;
+	      RETVAL = &PL_sv_undef;
 	   }
 	}
 	OUTPUT:
 	RETVAL
+
+#ifndef OPENLDAP
 
 int
 ldap_url_search(ld,url,attrsonly)
@@ -1181,6 +1322,8 @@ ldap_url_search_st(ld,url,attrsonly,timeout,result)
 	OUTPUT:
 	RETVAL
 	result
+
+#endif
 	
 int
 ldap_sort_entries(ld,chain,attr)
@@ -1189,13 +1332,13 @@ ldap_sort_entries(ld,chain,attr)
 	char *		attr
 	CODE:
 	{
-	   RETVAL = ldap_sort_entries(ld,&chain,attr,strcasecmp);
+	   RETVAL = ldap_sort_entries(ld,&chain,attr,StrCaseCmp);
 	}
 	OUTPUT:
 	RETVAL
 	chain
 
-#ifdef NETSCAPE_LDAP
+#ifdef MOZILLA_LDAP
 
 int
 ldap_multisort_entries(ld,chain,attrs)
@@ -1218,7 +1361,7 @@ ldap_multisort_entries(ld,chain,attrs)
                  for (count=0;count <= arraylen; count++)
                  {
                     current = av_fetch((AV *)SvRV(attrs),count,0);
-                    attrs_char[count] = SvPV(*current,na);
+                    attrs_char[count] = SvPV(*current,PL_na);
                  }
                  attrs_char[arraylen+1] = NULL;
               }
@@ -1226,10 +1369,45 @@ ldap_multisort_entries(ld,chain,attrs)
               croak("Net::LDAPapi::ldap_multisort_entries needs ARRAY reference as argument 3.");
               XSRETURN(1);
            }
-	   RETVAL = ldap_multisort_entries(ld,&chain,attrs_char,strcasecmp);
+	   RETVAL = ldap_multisort_entries(ld,&chain,attrs_char,StrCaseCmp);
 	}
 	OUTPUT:
 	RETVAL
 	chain
+
+#endif
+
+#ifdef OPENLDAP
+
+int
+ldap_start_tls_s(ld)
+	LDAP *	ld
+	CODE:
+	{
+	   RETVAL = ldap_start_tls_s(ld,NULL,NULL);
+	}
+	OUTPUT:
+	RETVAL
+
+int
+ldap_sasl_interactive_bind_s(ld,who,passwd,mech,realm,authzid,props,flags)
+	LDAP *	ld
+	LDAP_CHAR *	who
+	LDAP_CHAR *	passwd
+	LDAP_CHAR *	mech
+	LDAP_CHAR *	realm
+	LDAP_CHAR *	authzid
+	LDAP_CHAR *	props
+	unsigned	flags
+	CODE:
+	{
+	  	bictx ctx = {who, passwd, realm, authzid};
+		if (props)
+			ldap_set_option(ld,LDAP_OPT_X_SASL_SECPROPS,props);
+		RETVAL = ldap_sasl_interactive_bind_s( ld, NULL, mech, NULL, NULL,
+			flags, ldap_b2_interact, &ctx );
+	}
+	OUTPUT:
+	RETVAL
 
 #endif

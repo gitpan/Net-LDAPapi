@@ -28,7 +28,8 @@ require AutoLoader;
 	ldapssl_client_init ldapssl_init ldapssl_install_routines
 	ldap_get_all_entries ldap_sort_entries ldap_multisort_entries
 	ldap_is_ldap_url ldap_url_parse ldap_url_search ldap_url_search_s
-	ldap_url_search_st
+	ldap_url_search_st ber_free ldap_initialize ldap_start_tls_s
+	ldap_sasl_interactive_bind_s
 	LDAPS_PORT
 	LDAP_ADMIN_LIMIT_EXCEEDED
 	LDAP_AFFECTS_MULTIPLE_DSAS
@@ -41,6 +42,7 @@ require AutoLoader;
 	LDAP_AUTH_KRBV41_30
 	LDAP_AUTH_KRBV42_30
 	LDAP_AUTH_NONE
+	LDAP_AUTH_SASL
 	LDAP_AUTH_SIMPLE
 	LDAP_AUTH_UNKNOWN
 	LDAP_BUSY
@@ -86,12 +88,14 @@ require AutoLoader;
 	LDAP_OPT_CACHE_ENABLE
 	LDAP_OPT_CACHE_FN_PTRS
 	LDAP_OPT_CACHE_STRATEGY
+	LDAP_OPT_DEBUG_LEVEL
 	LDAP_OPT_DEREF
 	LDAP_OPT_DESC
 	LDAP_OPT_DNS
 	LDAP_OPT_IO_FN_PTRS
 	LDAP_OPT_OFF
 	LDAP_OPT_ON
+	LDAP_OPT_PROTOCOL_VERSION
 	LDAP_OPT_REBIND_ARG
 	LDAP_OPT_REBIND_FN
 	LDAP_OPT_REFERRALS
@@ -122,6 +126,9 @@ require AutoLoader;
 	LDAP_RES_SEARCH_REFERENCE
 	LDAP_RES_SEARCH_RESULT
 	LDAP_RES_SESSION
+	LDAP_SASL_AUTOMATIC
+	LDAP_SASL_INTERACTIVE
+	LDAP_SASL_QUIET
 	LDAP_SCOPE_BASE
 	LDAP_SCOPE_ONELEVEL
 	LDAP_SCOPE_SUBTREE
@@ -148,8 +155,9 @@ require AutoLoader;
 	LDAP_VERSION
 	LDAP_VERSION1
 	LDAP_VERSION2
+	LDAP_VERSION3
 );
-$VERSION = '1.42';
+$VERSION = '2.00';
 
 sub AUTOLOAD {
     # This AUTOLOAD is used to 'autoload' constants from the constant()
@@ -182,19 +190,29 @@ sub new
    my $ld;
    bless $self, $class;
 
-   my ($host,$port) = $self->rearrange(['HOST','PORT'],@args);
+   my ($host,$port,$url) = $self->rearrange(['HOST','PORT','URL'],@args);
 
-   $host = "localhost" unless $host;
-   $port = $self->LDAP_PORT unless $port;
-
-   $ld = ldap_open($host,$port);
-   if ($ld == 0)
+   if ( defined($url) )
    {
-       return -1;
+	if (ldap_initialize($ld,$url))
+	{
+		return -1;
+	}
+   } else
+   {
+   	$host = "localhost" unless $host;
+   	$port = $self->LDAP_PORT unless $port;
+
+   	$ld = ldap_init($host,$port);
+   	if ($ld == 0)
+   	{
+       		return -1;
+   	}
    }
    $self->{"ld"} = $ld;
    $self->{"errno"} = 0;
    $self->{"errstring"} = undef;
+   ldap_set_option($ld,$self->LDAP_OPT_PROTOCOL_VERSION,$self->LDAP_VERSION3);
    return $self;
 }
 
@@ -216,6 +234,7 @@ sub abandon
    if (($status = ldap_abandon($self->{"ld"},$msgid)) != $self->LDAP_SUCCESS)
    {
       $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
+      $self->{"extramsg"} = $extramsg;
    }
    return $status;
 }
@@ -241,6 +260,7 @@ sub add
    if (($msgid = ldap_add($self->{"ld"},$dn,$mod)) < 0)
    {
       $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
+      $self->{"extramsg"} = $extramsg;
    }
    return $msgid;
 }
@@ -266,6 +286,7 @@ sub add_s
    if (($status = ldap_add_s($self->{"ld"},$dn,$mod)) != $self->LDAP_SUCCESS)
    {
       $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
+      $self->{"extramsg"} = $extramsg;
    }
    return $status;
 }
@@ -287,6 +308,7 @@ sub bind
    if ($msgid < 0)
    {
       $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
+      $self->{"extramsg"} = $extramsg;
    }
    return($msgid);
 }
@@ -303,13 +325,43 @@ sub bind_s
    $pass = "" unless $pass;
    $authtype = $self->LDAP_AUTH_SIMPLE unless $authtype;
 
-   $status = ldap_bind_s($self->{"ld"},$dn,$pass,$authtype);
+   if ($authtype == $self->LDAP_AUTH_SASL)
+   {
+	$status = ldap_sasl_interactive_bind_s($self->{"ld"}, $dn, $pass,
+		$self->{"saslmech"}, $self->{"saslrealm"},
+		$self->{"saslauthzid"}, $self->{"saslsecprops"},
+		$self->{"saslflags"});
+   } else {
+
+   	$status = ldap_bind_s($self->{"ld"},$dn,$pass,$authtype);
+   }
 
    if ($status != $self->LDAP_SUCCESS)
    {
       $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
+      $self->{"extramsg"} = $extramsg;
    }
    return $status;
+}
+
+sub sasl_parms
+{
+   my ($self,@args) = @_;
+   my ($mech,$realm,$authzid,$secprops,$flags) = $self->rearrange(['MECH','REALM','AUTHZID','SECPROPS','FLAGS'],@args);
+
+   $mech = "" unless $mech;
+   $realm = "" unless $realm;
+   $authzid = "" unless $authzid;
+   $secprops = "" unless $secprops;
+   $flags = $self->LDAP_SASL_QUIET unless defined($flags);
+
+   $self->{"saslmech"} = $mech;
+   $self->{"saslrealm"} = $realm;
+   $self->{"saslauthzid"} = $authzid;
+   $self->{"saslsecprops"} = $secprops;
+   $self->{"saslflags"} = $flags;
+   # Debugging information, investigate debugging flags.
+   # print "mech $mech, realm $realm, authzid $authzid, props $secprops, flags $flags\n";
 }
 
 sub compare
@@ -331,6 +383,7 @@ sub compare
    if ($msgid < 0)
    {
       $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
+      $self->{"extramsg"} = $extramsg;
    }
    return($msgid);
 }
@@ -353,6 +406,7 @@ sub compare_s
       != $self->LDAP_SUCCESS)
    {
       $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
+      $self->{"extramsg"} = $extramsg;
    }
    return $status;
 }
@@ -390,6 +444,7 @@ sub delete
    if ($msgid < 0)
    {
       $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
+      $self->{"extramsg"} = $extramsg;
    }
    return($msgid);
 }
@@ -410,6 +465,7 @@ sub delete_s
    if (($status = ldap_delete_s($self->{"ld"},$dn)) != $self->LDAP_SUCCESS)
    {
       $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
+      $self->{"extramsg"} = $extramsg;
    }
    return $status;
 }
@@ -516,7 +572,7 @@ sub next_attribute
 
    if (!$attr)
    {
-      undef $self->{"ber"};
+      ber_free($self->{"ber"},0);
    }
    return $attr;
 }
@@ -630,6 +686,7 @@ sub modify
    if ($msgid < 0)
    {
       $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
+      $self->{"extramsg"} = $extramsg;
    }
    return $msgid;
 }
@@ -655,6 +712,7 @@ sub modify_s
    if (($status = ldap_modify_s($self->{"ld"},$dn,$mod)) != $self->LDAP_SUCCESS)
    {
       $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
+      $self->{"extramsg"} = $extramsg;
    }
    return $status;
 }
@@ -670,6 +728,7 @@ sub modrdn2
    if ($msgid < 0)
    {
       $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
+      $self->{"extramsg"} = $extramsg;
    }
    return $msgid;
 }
@@ -686,6 +745,7 @@ sub modrdn2_s
    if ($status != $self->LDAP_SUCCESS)
    {
       $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
+      $self->{"extramsg"} = $extramsg;
    }
    return $status;
 }
@@ -759,6 +819,7 @@ sub url_search
    if (($msgid = ldap_url_search($self->{"ld"},$url,$attrsonly)) < 0)
    {
       $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
+      $self->{"extramsg"} = $extramsg;
    }
    return $msgid;
 }
@@ -775,6 +836,7 @@ sub url_search_s
       $self->LDAP_SUCCESS)
    {
       $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
+      $self->{"extramsg"} = $extramsg;
    }
    $self->{"result"} = $result;
    return $status;
@@ -792,6 +854,7 @@ sub url_search_st
       $result)) != $self->LDAP_SUCCESS)
    {
       $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
+      $self->{"extramsg"} = $extramsg;
    }
    $self->{"result"} = $result;
    return $status;
@@ -813,6 +876,7 @@ sub sort_entries
    if ($status != $self->LDAP_SUCCESS)
    {
       $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
+      $self->{"extramsg"} = $extramsg;
    }
    return $status;
 }
@@ -833,6 +897,7 @@ sub multisort_entries
    if ($status != $self->LDAP_SUCCESS)
    {
       $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
+      $self->{"extramsg"} = $extramsg;
    }
    return $status;
 }
@@ -856,6 +921,7 @@ sub search
    if ($msgid < 0)
    {
       $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
+      $self->{"extramsg"} = $extramsg;
    }
    return($msgid);
 }
@@ -879,6 +945,7 @@ sub search_s
    if ($status != $self->LDAP_SUCCESS)
    {
       $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
+      $self->{"extramsg"} = $extramsg;
    }
    $self->{"result"} = $result;
    return $status;
@@ -903,6 +970,7 @@ sub search_st
    if ($status != $self->LDAP_SUCCESS)
    {
       $self->{"errno"} = ldap_get_lderrno($self->{"ld"},$errdn,$extramsg);
+      $self->{"extramsg"} = $extramsg;
       $self->{"errstring"} = ldap_err2string($self->{"errno"});
    }
    $self->{"result"} = $result;
@@ -1015,6 +1083,12 @@ sub errstring
    return ldap_err2string($self->{"errno"});
 }
 
+sub extramsg
+{
+   my ($self) = @_;
+   return $self->{"extramsg"};
+}
+
 sub ld
 {
    my ($self) = @_;
@@ -1034,6 +1108,26 @@ sub msgid
 # This subroutine was borrowed from CGI.pm.  It does a wonderful job and
 # is much better than anything I created in my first attempt at named
 # arguments.  I may replace it later.
+
+sub make_attributes {
+    my $attr = shift;
+    return () unless $attr && ref($attr) && ref($attr) eq 'HASH';
+    my $escape = shift || 0;
+    my(@att);
+    foreach (keys %{$attr}) {
+	my($key) = $_;
+	$key=~s/^\-//;     # get rid of initial - if present
+
+	# old way: breaks EBCDIC!
+	# $key=~tr/A-Z_/a-z-/; # parameters are lower case, use dashes
+
+	($key="\L$key") =~ tr/_/-/; # parameters are lower case, use dashes
+
+	my $value = $escape ? simple_escape($attr->{$_}) : $attr->{$_};
+	push(@att,defined($attr->{$_}) ? qq/$key="$value"/ : qq/$key/);
+    }
+    return @att;
+}
 
 sub rearrange {
     my($self,$order,@param) = @_;
@@ -1263,7 +1357,7 @@ Net::LDAPapi - Perl5 Module Supporting LDAP API
 
 =head1 SSL SUPPORT
 
-  When compiled with the Netscape SDK, this module now supports SSL.
+  When compiled with the Mozilla SDK, this module now supports SSL.
   I do not have an SSL capable server, but I'm told this works.  The
   functions available are:
 
@@ -1434,7 +1528,7 @@ Net::LDAPapi - Perl5 Module Supporting LDAP API
   Can also be accessed directly as 'ldap_explode_dn' if no session is
   initialized and you don't want the object oriented form.
 
-  Only available when compiled with Netscape SDK.
+  Only available when compiled with Mozilla SDK.
 
   Example:
 
@@ -1450,7 +1544,7 @@ Net::LDAPapi - Perl5 Module Supporting LDAP API
   Can also be accessed directly as 'ldap_explode_rdn' if no session is
   initialized and you don't want the object oriented form.
 
-  Only available with Netscape SDK.
+  Only available with Mozilla SDK.
 
   Example:
 
@@ -1716,7 +1810,7 @@ Net::LDAPapi - Perl5 Module Supporting LDAP API
   attr		- LDAP Attributes to Return (ARRAY Reference)
   filter	- LDAP Search Filter
   scope		- LDAP Search Scope
-  options	- Netscape key specifying LDAP over SSL
+  options	- Mozilla key specifying LDAP over SSL
 
   Example:
 
