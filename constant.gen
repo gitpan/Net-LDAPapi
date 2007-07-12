@@ -2,7 +2,7 @@
 #
 #  constants.gen - h.b.furuseth@usit.uio.no
 #     some OpenLDAP constants added by hyc@symas.com
-#
+#     some OpenLDAP constants added by priimak@stanford.edu
 
 sub SYM
 {
@@ -25,6 +25,94 @@ while (<DATA>)
 __END__
 
 /* This file is generated from constants.gen.  Changes here will be lost! */
+
+#ifndef LDAP_CONTROL_SYNC
+#define LDAP_CONTROL_SYNC "1.3.6.1.4.1.4203.1.9.1.1"
+#endif
+
+#ifndef LDAP_CONTROL_SYNC_STATE
+#define LDAP_CONTROL_SYNC_STATE "1.3.6.1.4.1.4203.1.9.1.2"
+#endif
+
+#ifndef LDAP_CONTROL_SYNC_DONE
+#define LDAP_CONTROL_SYNC_DONE "1.3.6.1.4.1.4203.1.9.1.3"
+#endif
+
+#ifndef LDAP_SYNC_INFO
+#define LDAP_SYNC_INFO "1.3.6.1.4.1.4203.1.9.1.2"
+#endif
+
+#ifndef LDAP_RES_INTERMEDIATE
+#define LDAP_RES_INTERMEDIATE ((ber_tag_t) 0x79U) /* V3+: application + constructed */
+#endif
+
+static char *
+constant_s(name)
+char *name;
+{
+    errno = 0;
+
+    if (name[0] == 'L' &&
+        name[1] == 'D' &&
+        name[2] == 'A' &&
+        name[3] == 'P' &&
+        name[4] == '_' )
+    switch (name[5])
+    {
+        case 'S':
+            SYM(LDAP_SASL_NULL)
+            SYM(LDAP_SASL_SIMPLE)
+            SYM(LDAP_SYNC_INFO)
+            break;
+
+        case 'C':
+            SYM(LDAP_CONTROL_MANAGEDSAIT)
+            SYM(LDAP_CONTROL_PROXY_AUTHZ)
+            SYM(LDAP_CONTROL_SUBENTRIES)
+            SYM(LDAP_CONTROL_VALUESRETURNFILTER)
+            SYM(LDAP_CONTROL_X_VALUESRETURNFILTER)
+            SYM(LDAP_CONTROL_ASSERT)
+            SYM(LDAP_CONTROL_PRE_READ)
+            SYM(LDAP_CONTROL_POST_READ)
+            SYM(LDAP_CONTROL_SORTREQUEST)
+            SYM(LDAP_CONTROL_SORTRESPONSE)
+            SYM(LDAP_CONTROL_PAGEDRESULTS)
+            SYM(LDAP_CONTROL_PASSWORDPOLICYREQUEST)
+            SYM(LDAP_CONTROL_PASSWORDPOLICYRESPONSE)
+            SYM(LDAP_CONTROL_NOOP)
+            SYM(LDAP_CONTROL_NO_SUBORDINATES)
+            SYM(LDAP_CONTROL_MANAGEDIT)
+            SYM(LDAP_CONTROL_SLURP)
+            SYM(LDAP_CONTROL_VALSORT)
+            SYM(LDAP_CONTROL_SYNC)
+            SYM(LDAP_CONTROL_SYNC_STATE)
+            SYM(LDAP_CONTROL_SYNC_DONE)
+            SYM(LDAP_CONTROL_X_CHAINING_BEHAVIOR)
+            SYM(LDAP_CONTROL_X_INCREMENTAL_VALUES)
+            SYM(LDAP_CONTROL_X_DOMAIN_SCOPE)
+            SYM(LDAP_CONTROL_X_PERMISSIVE_MODIFY)
+            SYM(LDAP_CONTROL_X_SEARCH_OPTIONS)
+            SYM(LDAP_CONTROL_X_TREE_DELETE)
+            SYM(LDAP_CONTROL_X_EXTENDED_DN)
+            SYM(LDAP_CONTROL_DUPENT_REQUEST)
+            SYM(LDAP_CONTROL_DUPENT_RESPONSE)
+            SYM(LDAP_CONTROL_DUPENT_ENTRY)
+            SYM(LDAP_CONTROL_DUPENT)
+            SYM(LDAP_CONTROL_PERSIST_REQUEST)
+            SYM(LDAP_CONTROL_PERSIST_ENTRY_CHANGE_NOTICE)
+            SYM(LDAP_CONTROL_VLVREQUEST)
+            SYM(LDAP_CONTROL_VLVRESPONSE)
+            SYM(LDAP_CONTROL_GROUPING)
+            break;
+    }
+    errno = EINVAL;
+    return NULL;
+
+not_there:
+    errno = ENOENT;
+    return NULL;
+
+}
 
 static double
 constant(name, arg)
@@ -195,19 +283,19 @@ int arg;
     case 'R':
        SYM(LDAP_REFERRAL)
        SYM(LDAP_RESULTS_TOO_LARGE)
-       SYM(LDAP_RES_ADD)
-       SYM(LDAP_RES_ANY)
        SYM(LDAP_RES_BIND)
-       SYM(LDAP_RES_COMPARE)
-       SYM(LDAP_RES_DELETE)
-       SYM(LDAP_RES_EXTENDED)
-       SYM(LDAP_RES_MODIFY)
-       SYM(LDAP_RES_MODRDN)
-       SYM(LDAP_RES_RESUME)
        SYM(LDAP_RES_SEARCH_ENTRY)
        SYM(LDAP_RES_SEARCH_REFERENCE)
        SYM(LDAP_RES_SEARCH_RESULT)
-       SYM(LDAP_RES_SESSION)
+       SYM(LDAP_RES_MODIFY)
+       SYM(LDAP_RES_ADD)
+       SYM(LDAP_RES_DELETE)
+       SYM(LDAP_RES_MODDN)
+       SYM(LDAP_RES_COMPARE)
+       SYM(LDAP_RES_EXTENDED)
+       SYM(LDAP_RES_INTERMEDIATE)
+       SYM(LDAP_RES_ANY)
+       SYM(LDAP_RES_UNSOLICITED)
        break;
 
     case 'S':
@@ -226,6 +314,32 @@ int arg;
        break;
 
     case 'T':
+       SYM(LDAP_TAG_SYNC_NEW_COOKIE)
+       SYM(LDAP_TAG_SYNC_REFRESH_DELETE)
+       SYM(LDAP_TAG_SYNC_REFRESH_PRESENT)
+       SYM(LDAP_TAG_SYNC_ID_SET)
+       SYM(LDAP_TAG_SYNC_COOKIE)
+       SYM(LDAP_TAG_REFRESHDELETES)
+       SYM(LDAP_TAG_REFRESHDONE)
+       SYM(LDAP_TAG_RELOAD_HINT)
+       SYM(LDAP_TAG_EXOP_MODIFY_PASSWD_ID)
+       SYM(LDAP_TAG_EXOP_MODIFY_PASSWD_OLD)
+       SYM(LDAP_TAG_EXOP_MODIFY_PASSWD_NEW)
+       SYM(LDAP_TAG_EXOP_MODIFY_PASSWD_GEN)
+       SYM(LDAP_TAG_MESSAGE)
+       SYM(LDAP_TAG_MSGID)
+       SYM(LDAP_TAG_LDAPDN)
+       SYM(LDAP_TAG_LDAPCRED)
+       SYM(LDAP_TAG_CONTROLS)
+       SYM(LDAP_TAG_REFERRAL)
+       SYM(LDAP_TAG_NEWSUPERIOR)
+       SYM(LDAP_TAG_EXOP_REQ_OID)
+       SYM(LDAP_TAG_EXOP_REQ_VALUE)
+       SYM(LDAP_TAG_EXOP_RES_OID)
+       SYM(LDAP_TAG_EXOP_RES_VALUE)
+       SYM(LDAP_TAG_IM_RES_OID)
+       SYM(LDAP_TAG_IM_RES_VALUE)
+       SYM(LDAP_TAG_SASL_RES_CREDS)
        SYM(LDAP_TIMELIMIT_EXCEEDED)
        SYM(LDAP_TIMEOUT)
        SYM(LDAP_TYPE_OR_VALUE_EXISTS)
