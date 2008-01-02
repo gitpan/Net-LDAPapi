@@ -227,7 +227,7 @@ require AutoLoader;
        LDAP_TAG_IM_RES_VALUE
        LDAP_TAG_SASL_RES_CREDS
        );
-$VERSION = '3.0.1';
+$VERSION = '3.0.2';
 
 sub AUTOLOAD {
     # This AUTOLOAD is used to 'autoload' constants from the constant()
@@ -491,6 +491,8 @@ sub bind_s
 
     $dn       = "" unless $dn;
     $pass     = "" unless $pass;
+    $sctrls   = 0 unless $sctrls;
+    $cctrls   = 0 unless $cctrls;
     $authtype = $authtype || $self->LDAP_AUTH_SIMPLE;
 
     $sctrls = $self->create_controls_array(@$serverctrls) if $serverctrls;
@@ -649,6 +651,8 @@ sub start_tls_s
     my ($self, @args) = @_;
 
     my ($status, $sctrls, $cctrls);
+    $sctrls=0;
+    $cctrls=0;
 
     my ($serverctrls, $clientctrls) = $self->rearrange(['SCTRLS', 'CCTRLS'], @args);
 
@@ -690,6 +694,9 @@ sub delete
         $self->rearrange(['DN', 'SCTRLS', 'CCTRLS'], @args);
 
     croak("No DN Specified") if ($dn eq "");
+
+    $sctrls = 0;
+    $cctrls = 0;
 
     $sctrls = $self->create_controls_array(@$serverctrls) if $serverctrls;
     $cctrls = $self->create_controls_array(@$clientctrls) if $clientctrls;
@@ -890,7 +897,7 @@ sub next_changed_entries {
                 $syncInfoValues = $syncInfoValue->decode($retdatap);
 
                 # trying to get the cookie from one of the foolowing choices.
-                my $cookie = $syncInfoValues->{'newcookie'};
+                $cookie = $syncInfoValues->{'newcookie'};
 
                 my $refreshPresent = $syncInfoValues->{'refreshPresent'};
                 $cookie = $refreshPresent->{'cookie'} if( $refreshPresent );
@@ -1694,6 +1701,9 @@ sub unbind
 
     my ($serverctrls, $clientctrls) =
         $self->rearrange(['SCTRLS', 'CCTRLS'], @args);
+
+    $sctrls = 0;
+    $cctrls = 0;
 
     $sctrls = $self->create_controls_array(@$serverctrls) if $serverctrls;
     $cctrls = $self->create_controls_array(@$clientctrls) if $clientctrls;
